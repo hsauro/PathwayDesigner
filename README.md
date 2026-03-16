@@ -10,16 +10,6 @@
    </tr>
 </table>
 
-[![License: MIT](https://img.shields.io)](https://opensource.org)
-
-
-<a href="https://opensource.org">
-  <img src="https://img.shields.io" alt="License: MIT">
-</a>
-
-
-
-
 # PathwayDesigner
 
 This is a rewrite of the original PathwayDesigner application. This version will run on Windows and Mac OSX
