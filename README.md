@@ -1,11 +1,8 @@
-<table style="width:100%">
-  <tr>
-    <td><a href="https://badge.fury.io/gh/sys-bio%2Fpathwaydesigner"><img src="https://badge.fury.io/gh/sys-bio%2Fpathwaydesigner.svg" alt="GitHub version" height="18"></a></td>
-  </tr>
-</table>
+
 
  <table style="width:100%">
   <tr>
+    <td><a href="https://badge.fury.io/gh/sys-bio%2Fpathwaydesigner"><img src="https://badge.fury.io/gh/sys-bio%2Fpathwaydesigner.svg" alt="GitHub version" height="18"></a></td>
     <td><img alt="Licence", src="https://img.shields.io/hexpm/l/pathwaydesigner"</td>
     <td><img alt="PyPI - Downloads", src="https://img.shields.io/pypi/dm/pathwaydesigner"></td>
     <td><img alt="Funding", src="https://img.shields.io/badge/Funding-NIGMS%20(GM123032)-blue"></td>
