@@ -1,6 +1,6 @@
 <table style="width:100%">
   <tr>
-    <td><a href="https://badge.fury.io/gh/sys-bio%2Fpathwaydesigner"><img src="https://badge.fury.io/gh/sys-bio%2Ftellurium.svg" alt="GitHub version" height="18"></a></td>
+    <td><a href="https://badge.fury.io/gh/sys-bio%2Fpathwaydesigner"><img src="https://badge.fury.io/gh/sys-bio%2Fpathwaydesigner.svg" alt="GitHub version" height="18"></a></td>
   </tr>
 </table>
 
