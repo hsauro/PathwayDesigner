@@ -1,0 +1,18 @@
+﻿  // Species
+  species A = 1;
+  species B = 1;
+  species C = 0;
+  species D = 0;
+  species E = 2;
+  species F = 0;
+  species ATP = 0;
+
+  // Reactions
+  r5: A + B => C + D; k1*A*B;
+  r8: E => F; k2*E;
+  r11: C + ATP => ATP + F; v;
+
+  // Parameters
+  k1 = 0.1;
+  k2 = 0.2;
+
