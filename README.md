@@ -12,6 +12,11 @@
 
 [![License: MIT](https://img.shields.io)](https://opensource.org)
 
+
+[![License: MIT](https://img.shields.io)](https://opensource.org)
+
+
+
 # PathwayDesigner
 
 This is a rewrite of the original PathwayDesigner application. This version will run on Windows and Mac OSX
