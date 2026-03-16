@@ -3,7 +3,7 @@
  <table style="width:100%">
   <tr>
     <td><a href="https://badge.fury.io/gh/sys-bio%2Fpathwaydesigner"><img src="https://badge.fury.io/gh/sys-bio%2Fpathwaydesigner.svg" alt="GitHub version" height="18"></a></td>
-    <td><img alt="AUR License" src="https://img.shields.io/aur/license/:PathwayDesigner"></td>
+    <td><img alt="GitHub License" src="https://img.shields.io"></td>
     <td><img alt="Funding", src="https://img.shields.io/badge/Funding-NIGMS%20(GM123032)-blue"></td>
     <td><img alt="Funding", src="https://img.shields.io/badge/Funding-NIBIB%20(EB028887)-blue"></td>
    </tr>
