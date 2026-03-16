@@ -4,7 +4,7 @@ This is a rewrite of the original PathwayDesigner application. This version will
 
 ## Overview
 
-PathwayDesigner is a GUI tool for drawing and editing biochemical networks. Visualization is simple in that it doesn't support SBGN but offer a clean view of a network. Models can be imported in Antimony format and eventually SBML. The applicaton has its own JSON format that is used to sotre all the graphical information.
+PathwayDesigner is a GUI tool for drawing and editing biochemical networks. Visualization is simple in that it doesn't support the SBGN standard but offer a clean view of a network. Models can be imported in Antimony format and eventually SBML. The applicaton has its own JSON format that is used to store all the graphical information.
 
 ## Getting Started
 
