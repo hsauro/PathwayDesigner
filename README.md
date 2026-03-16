@@ -13,7 +13,10 @@
 [![License: MIT](https://img.shields.io)](https://opensource.org)
 
 
-[![License: MIT](https://img.shields.io)](https://opensource.org)
+<a href="https://opensource.org">
+  <img src="https://img.shields.io" alt="License: MIT">
+</a>
+
 
 
 
