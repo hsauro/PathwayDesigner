@@ -10,6 +10,8 @@
    </tr>
 </table>
 
+[![GitHub license](https://img.shields.io)](https://github.com)
+
 # PathwayDesigner
 
 This is a rewrite of the original PathwayDesigner application. This version will run on Windows and Mac OSX
