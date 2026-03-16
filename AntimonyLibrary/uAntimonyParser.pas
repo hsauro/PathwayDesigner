@@ -371,6 +371,7 @@ begin
   case FLexer.CurrentToken.TokenType of
     ttCompartment: ParseCompartmentDeclaration(AModel);
     ttSpecies: ParseSpeciesDeclaration(AModel, False);
+    ttVar: ParseSpeciesDeclaration(AModel, False);
     ttIdentifier:
       begin
         // Use lookahead to determine if this is a reaction, assignment, or assignment rule

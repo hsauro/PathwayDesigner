@@ -26,6 +26,7 @@ type
     ttConst,
     ttCompartment,
     ttSpecies,
+    ttVar,
     ttAnd,        // and
     ttOr,         // or
     ttNot,        // not
@@ -566,6 +567,8 @@ begin
       Result.TokenType := ttCompartment
     else if SameText(IdentifierValue, 'species') then
       Result.TokenType := ttSpecies
+    else if SameText(IdentifierValue, 'var') then
+      Result.TokenType := ttVar
     else if SameText(IdentifierValue, 'const') then
       Result.TokenType := ttConst
     else if SameText(IdentifierValue, 'in') then

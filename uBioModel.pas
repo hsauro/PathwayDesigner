@@ -57,10 +57,18 @@ type
   private
     FSpecies       : TSpeciesNode;
     FStoichiometry : Double;
+    FCtrl1         : TPointF;   // Bézier control point near the species end
+    FCtrl2         : TPointF;   // Bézier control point near the junction end
+    FCtrlPtsSet    : Boolean;   // False = auto-compute; True = user-placed
   public
     constructor Create(ASpecies: TSpeciesNode; AStoichiometry: Double = 1.0);
     property Species       : TSpeciesNode read FSpecies       write FSpecies;
     property Stoichiometry : Double       read FStoichiometry write FStoichiometry;
+    property Ctrl1         : TPointF      read FCtrl1         write FCtrl1;
+    property Ctrl2         : TPointF      read FCtrl2         write FCtrl2;
+    property CtrlPtsSet    : Boolean      read FCtrlPtsSet    write FCtrlPtsSet;
+    // Clear manual control points — next render auto-computes them
+    procedure ResetCtrlPts;
   end;
 
 // ===========================================================================
@@ -118,7 +126,8 @@ type
     FSelected    : Boolean;
     FKineticLaw  : string;
     FIsReversible: Boolean;
-    FIsLinear    : Boolean;   // True = junction is projected onto reactant→product line
+    FIsLinear    : Boolean;
+    FIsBezier    : Boolean;   // True = render legs as cubic Bézier curves
   public
     constructor Create(const AId : string; AJX, AJY : Single);
     destructor  Destroy; override;
@@ -131,6 +140,7 @@ type
     property KineticLaw   : string                        read FKineticLaw   write FKineticLaw;
     property IsReversible : Boolean                       read FIsReversible write FIsReversible;
     property IsLinear     : Boolean                       read FIsLinear     write FIsLinear;
+    property IsBezier     : Boolean                       read FIsBezier     write FIsBezier;
 
     function ReactantSpecies(AIndex: Integer): TSpeciesNode;
     function ProductSpecies (AIndex: Integer): TSpeciesNode;
@@ -277,6 +287,16 @@ begin
   inherited Create;
   FSpecies       := ASpecies;
   FStoichiometry := AStoichiometry;
+  FCtrl1         := TPointF.Create(0, 0);
+  FCtrl2         := TPointF.Create(0, 0);
+  FCtrlPtsSet    := False;
+end;
+
+procedure TParticipant.ResetCtrlPts;
+begin
+  FCtrl1      := TPointF.Create(0, 0);
+  FCtrl2      := TPointF.Create(0, 0);
+  FCtrlPtsSet := False;
 end;
 
 // ===========================================================================
@@ -391,6 +411,7 @@ begin
   FKineticLaw   := '';
   FIsReversible := False;
   FIsLinear     := False;
+  FIsBezier     := False;
 end;
 
 destructor TReaction.Destroy;
@@ -423,6 +444,7 @@ begin
   Result.AddPair('kineticLaw',   FKineticLaw);
   Result.AddPair('isReversible', TJSONBool.Create(FIsReversible));
   Result.AddPair('isLinear',     TJSONBool.Create(FIsLinear));
+  Result.AddPair('isBezier',     TJSONBool.Create(FIsBezier));
 
   Arr := TJSONArray.Create;
   for P in FReactants do
@@ -430,6 +452,14 @@ begin
     PObj := TJSONObject.Create;
     PObj.AddPair('id',            P.Species.Id);
     PObj.AddPair('stoichiometry', TJSONNumber.Create(P.Stoichiometry));
+    if P.CtrlPtsSet then
+    begin
+      PObj.AddPair('ctrl1x', TJSONNumber.Create(P.Ctrl1.X));
+      PObj.AddPair('ctrl1y', TJSONNumber.Create(P.Ctrl1.Y));
+      PObj.AddPair('ctrl2x', TJSONNumber.Create(P.Ctrl2.X));
+      PObj.AddPair('ctrl2y', TJSONNumber.Create(P.Ctrl2.Y));
+      PObj.AddPair('ctrlSet', TJSONBool.Create(True));
+    end;
     Arr.AddElement(PObj);
   end;
   Result.AddPair('reactants', Arr);
@@ -440,6 +470,14 @@ begin
     PObj := TJSONObject.Create;
     PObj.AddPair('id',            P.Species.Id);
     PObj.AddPair('stoichiometry', TJSONNumber.Create(P.Stoichiometry));
+    if P.CtrlPtsSet then
+    begin
+      PObj.AddPair('ctrl1x', TJSONNumber.Create(P.Ctrl1.X));
+      PObj.AddPair('ctrl1y', TJSONNumber.Create(P.Ctrl1.Y));
+      PObj.AddPair('ctrl2x', TJSONNumber.Create(P.Ctrl2.X));
+      PObj.AddPair('ctrl2y', TJSONNumber.Create(P.Ctrl2.Y));
+      PObj.AddPair('ctrlSet', TJSONBool.Create(True));
+    end;
     Arr.AddElement(PObj);
   end;
   Result.AddPair('products', Arr);
@@ -951,6 +989,37 @@ begin
     var LinVal := RctObj.GetValue('isLinear');
     if Assigned(LinVal) then R.IsLinear := (LinVal as TJSONBool).AsBoolean;
 
+    var BezVal := RctObj.GetValue('isBezier');
+    if Assigned(BezVal) then R.IsBezier := (BezVal as TJSONBool).AsBoolean;
+
+    // Helper to load a participant object with optional control points
+    var LoadParticipant := procedure(APObj: TJSONObject; AList: TObjectList<TParticipant>)
+    var
+      Part     : TParticipant;
+      ASpecies : TSpeciesNode;
+      AStoich  : Double;
+      CV       : TJSONValue;
+    begin
+      ASpecies := FindSpeciesById(APObj.GetValue('id').Value);
+      if not Assigned(ASpecies) then Exit;
+      AStoich := 1.0;
+      CV := APObj.GetValue('stoichiometry');
+      if Assigned(CV) then AStoich := (CV as TJSONNumber).AsDouble;
+      Part := TParticipant.Create(ASpecies, AStoich);
+      CV := APObj.GetValue('ctrlSet');
+      if Assigned(CV) and (CV as TJSONBool).AsBoolean then
+      begin
+        Part.Ctrl1 := TPointF.Create(
+          (APObj.GetValue('ctrl1x') as TJSONNumber).AsDouble,
+          (APObj.GetValue('ctrl1y') as TJSONNumber).AsDouble);
+        Part.Ctrl2 := TPointF.Create(
+          (APObj.GetValue('ctrl2x') as TJSONNumber).AsDouble,
+          (APObj.GetValue('ctrl2y') as TJSONNumber).AsDouble);
+        Part.CtrlPtsSet := True;
+      end;
+      AList.Add(Part);
+    end;
+
     // Reactants — support both v1 (plain id string) and v2 (object with stoich)
     var ReactArr := RctObj.GetValue('reactants') as TJSONArray;
     for j := 0 to ReactArr.Count - 1 do
@@ -959,15 +1028,13 @@ begin
       if Version >= 2 then
       begin
         PObj := ReactArr.Items[j] as TJSONObject;
-        S    := FindSpeciesById(PObj.GetValue('id').Value);
-        var StoichV := PObj.GetValue('stoichiometry');
-        if Assigned(StoichV) then Stoich := (StoichV as TJSONNumber).AsDouble;
+        LoadParticipant(PObj, R.Reactants);
       end
       else
+      begin
         S := FindSpeciesById(ReactArr.Items[j].Value);
-
-      if Assigned(S) then
-        R.Reactants.Add(TParticipant.Create(S, Stoich));
+        if Assigned(S) then R.Reactants.Add(TParticipant.Create(S, 1.0));
+      end;
     end;
 
     // Products
@@ -978,15 +1045,13 @@ begin
       if Version >= 2 then
       begin
         PObj := ProdArr.Items[j] as TJSONObject;
-        S    := FindSpeciesById(PObj.GetValue('id').Value);
-        var StoichV := PObj.GetValue('stoichiometry');
-        if Assigned(StoichV) then Stoich := (StoichV as TJSONNumber).AsDouble;
+        LoadParticipant(PObj, R.Products);
       end
       else
+      begin
         S := FindSpeciesById(ProdArr.Items[j].Value);
-
-      if Assigned(S) then
-        R.Products.Add(TParticipant.Create(S, Stoich));
+        if Assigned(S) then R.Products.Add(TParticipant.Create(S, 1.0));
+      end;
     end;
 
     FReactions.Add(R);

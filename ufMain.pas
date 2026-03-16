@@ -52,8 +52,8 @@ uses
   uBioModel,
   uDiagramView,
   uAntimonyBridge,
-  uLibSBNW,
-  uSBMLLayout;
+  uRandomNetwork,
+  uAppVersion;
 
 
 type
@@ -111,6 +111,8 @@ type
     lblStatus: TLabel;
     btnLayout: TSpeedButton;
     btnLinearUniUni: TSpeedButton;
+    btnRandomNetwork: TSpeedButton;
+    btnSetBezier: TSpeedButton;
     procedure btnAddBiUniClick(Sender: TObject);
     procedure btnAddSpeciesClick(Sender: TObject);
     procedure btnAddUniBiClick(Sender: TObject);
@@ -119,8 +121,10 @@ type
     procedure btnLinearUniUniClick(Sender: TObject);
     procedure btnNewClick(Sender: TObject);
     procedure btnOpenClick(Sender: TObject);
+    procedure btnRandomNetworkClick(Sender: TObject);
     procedure btnSaveClick(Sender: TObject);
     procedure btnSelectClick(Sender: TObject);
+    procedure btnSetBezierClick(Sender: TObject);
     procedure btnToggleAliasClick(Sender: TObject);
     procedure bynAddBiBiClick(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
@@ -206,6 +210,7 @@ begin
   // --- Domain objects -----------------------------------------------------
   FModel := TBioModel.Create;
   FView  := TDiagramView.Create(FModel, False {form owns the model separately});
+  FView.DefaultBezier := True;
   FView.LoadTestData;
   SetScrollBarDefaults;
   btnToggleAlias.Text := 'Alias ✓';
@@ -294,6 +299,17 @@ begin
   end;
 end;
 
+procedure TfrmMain.btnRandomNetworkClick(Sender: TObject);
+begin
+  TRandomNetwork.Generate(FModel, 8, 10);  // 8 species, 10 reactions
+  FView.SyncSpeciesNameCounter;            // keep S-name counter in sync
+  FView.AutoLayout;                        // arrange sensibly
+  HScrollBar.Value := 0;
+  VScrollBar.Value := 0;
+  PaintBox.Redraw;
+end;
+
+
 procedure TfrmMain.btnSaveClick(Sender: TObject);
 var
   Dlg : TSaveDialog;
@@ -313,6 +329,12 @@ end;
 procedure TfrmMain.btnSelectClick(Sender: TObject);
 begin
   FView.SetModeSelect;
+end;
+
+procedure TfrmMain.btnSetBezierClick(Sender: TObject);
+begin
+  FView.SetBezierSelected;
+  PaintBox.Redraw;
 end;
 
 procedure TfrmMain.btnToggleAliasClick(Sender: TObject);
@@ -428,7 +450,7 @@ end;
 procedure TfrmMain.mnuAboutClick(Sender: TObject);
 begin
     TDialogServiceSync.MessageDialog(
-    'PathwayDesigner Version: 0.1', TMsgDlgType.mtInformation, [TMsgDlgBtn.mbOK], TMsgDlgBtn.mbNo, 0);
+    'PathwayDesigner Version: ' + APP_VERSION + sLineBreak + 'Build Time: ' + BUILD_DATE, TMsgDlgType.mtInformation, [TMsgDlgBtn.mbOK], TMsgDlgBtn.mbNo, 0);
 end;
 
 

@@ -22,6 +22,7 @@ uses
   System.Classes,
   System.SysUtils,
   System.UITypes,
+  System.JSON,
   System.Math,
   System.Generics.Collections,
   FMX.Dialogs,
@@ -29,7 +30,8 @@ uses
   uBioModel,
   uGeometry,
   uAntimonyBridge,
-  uAutoLayout;
+  uAutoLayout,
+  uUndoManager;
 
 // ---------------------------------------------------------------------------
 const
@@ -53,7 +55,8 @@ const
 type
   TInteractionState = (
     isSelect, isAddSpecies, isAddReaction,
-    isDraggingNodes, isDraggingJunction, isRubberBand
+    isDraggingNodes, isDraggingJunction, isRubberBand,
+    isDraggingCtrlPt   // dragging a Bézier control point handle
   );
 
   TRightClickTarget = (rctNone, rctPrimary, rctAlias, rctReaction);
@@ -65,6 +68,7 @@ type
     FScrollOffset       : TPointF;
     FZoom               : Single;
     FShowAliasIndicator : Boolean;
+    FDefaultBezier      : Boolean;   // new reactions default to Bézier
 
     FState       : TInteractionState;
     FMouseWorld  : TPointF;
@@ -76,6 +80,21 @@ type
 
     FDraggedJunction : TReaction;
 
+    // Bezier control point dragging
+    FDraggedParticipant  : TParticipant;
+    FDraggedCtrlNum      : Integer;    // 1 = Ctrl1, 2 = Ctrl2
+    FDragAutoC1          : TPointF;    // auto ctrl pts captured at drag-start
+    FDragAutoC2          : TPointF;    //   ensures undragged handle never goes to (0,0)
+    // Undo state captured at the start of each drag gesture
+    FDragJunctionOldPos  : TPointF;    // junction pos before junction drag
+    FDragCtrlPtReactionId: string;     // reaction owning the dragged ctrl pt
+    FDragCtrlPtIsReactant: Boolean;
+    FDragCtrlPtPartIdx   : Integer;
+    FDragCtrlPtOldState  : TCtrlPtState; // ctrl pt state before materialising
+    // Undo manager
+    FUndoManager         : TUndoManager;
+    FRestoreProc         : TAfterRestoreProc;  // cached; created once in constructor
+
     FRubberAnchorScr : TPointF;
     FRubberCurScr    : TPointF;
 
@@ -86,18 +105,56 @@ type
 
     FNextSpeciesNum : Integer;
 
-    // Returns the effective junction position for rendering and hit-testing.
-    // For UniUni reactions when FLinearUniUni is True, this projects the
-    // stored junction onto the line between the reactant and product centres,
-    // making the three points collinear.  For all other cases it returns
-    // R.JunctionPos unchanged.
     function EffectiveJunctionPos(R: TReaction): TPointF;
+
+    // Compute auto control points for a Bezier leg.
+    // AStart/AEnd are world coords of the two endpoints of the leg.
+    // AFanIndex is this leg's index among all legs on the same species node.
+    // AFanTotal is the total number of legs on that species node.
+    // AJunctionAtEnd: True => AEnd is the junction (reactant leg).
+    //                 False => AStart is the junction (product leg).
+    // Fan offset is applied ONLY at the junction-end ctrl pt.
+    procedure ComputeAutoCtrlPts(const AStart, AEnd: TPointF;
+                                 AFanIndex, AFanTotal: Integer;
+                                 AJunctionAtEnd: Boolean;
+                                 out ACtrl1, ACtrl2: TPointF);
+
+    // Return control points for a participant leg, computing them if not set.
+    procedure GetCtrlPts(P: TParticipant;
+                         const AStart, AEnd: TPointF;
+                         AFanIndex, AFanTotal: Integer;
+                         AJunctionAtEnd: Boolean;
+                         out ACtrl1, ACtrl2: TPointF);
+
+    // Hit-test a Bezier control point handle.
+    // Returns True and sets APart/ACtrlNum when a handle is within tolerance.
+    // AAutoC1/AAutoC2 return the auto-computed ctrl pts for pre-drag materialisation.
+    function HitTestCtrlPt(const ScreenPt: TPointF;
+                           out APart: TParticipant;
+                           out ACtrlNum: Integer;
+                           out AAutoC1, AAutoC2: TPointF): Boolean;
+
+    // Bezier geometry helpers.
+    // Evaluate cubic Bezier at parameter t in [0,1].
+    function  BezierEval(const P0, C1, C2, P3: TPointF; t: Single): TPointF;
+    // Binary-search for the t where the Bezier crosses the species rectangle.
+    // AInsideAtZero: True when t=0 endpoint (P0) is inside the rectangle.
+    function  BezierBoundaryT(const P0, C1, C2, P3: TPointF;
+                              const Centre: TPointF; HalfW, HalfH: Single;
+                              AInsideAtZero: Boolean): Single;
+    // De Casteljau split: left sub-curve [0..t] returned as (L0,L1,L2,L3).
+    procedure BezierLeftHalf(const P0, C1, C2, P3: TPointF; t: Single;
+                             out L0, L1, L2, L3: TPointF);
+    // De Casteljau split: right sub-curve [t..1] returned as (R0,R1,R2,R3).
+    procedure BezierRightHalf(const P0, C1, C2, P3: TPointF; t: Single;
+                              out R0, R1, R2, R3: TPointF);
 
     // -----------------------------------------------------------------------
     procedure RenderBackground     (const ACanvas: ISkCanvas; W, H: Single);
     procedure RenderReactions      (const ACanvas: ISkCanvas);
     procedure RenderSpeciesNodes   (const ACanvas: ISkCanvas);
     procedure RenderJunctionHandles(const ACanvas: ISkCanvas);
+    procedure RenderCtrlPtHandles  (const ACanvas: ISkCanvas);
     procedure RenderPendingReaction(const ACanvas: ISkCanvas);
     procedure RenderRubberBand     (const ACanvas: ISkCanvas);
 
@@ -133,9 +190,17 @@ type
     procedure TryCompleteReaction;
 
     function  NextSpeciesName: string;
-    procedure SyncSpeciesNameCounter;
 
     procedure DeleteSelected;
+
+    // Undo helpers
+    function  TakeSnapshot: string;
+    function  MakeRestoreProc: TAfterRestoreProc;
+    function  FindParticipantInfo(APart: TParticipant;
+                                  out AReactionId: string;
+                                  out AIsReactant: Boolean;
+                                  out AIndex: Integer): Boolean;
+    procedure ClearTransientState;
 
   public
     constructor Create(AModel: TBioModel; AOwnsModel: Boolean = False);
@@ -154,6 +219,8 @@ type
     procedure SetModeAddSpecies;
     procedure SetModeAddReaction(ReactantCount, ProductCount: Integer);
     procedure CancelCurrentAction;
+
+    procedure SyncSpeciesNameCounter;
 
     function RightClickHitTest(X, Y: Single;
                                out HitSpecies : TSpeciesNode;
@@ -184,10 +251,31 @@ type
     property Zoom               : Single             read FZoom               write FZoom;
     property State              : TInteractionState  read FState;
     property ShowAliasIndicator : Boolean            read FShowAliasIndicator write FShowAliasIndicator;
+    property DefaultBezier      : Boolean            read FDefaultBezier      write FDefaultBezier;
+
+    // Undo / Redo
+    procedure Undo;
+    procedure Redo;
+    function  CanUndo: Boolean;
+    function  CanRedo: Boolean;
+    function  UndoDescription: string;
+    function  RedoDescription: string;
 
     // Toggle IsLinear on all currently selected UniUni reactions.
     // Reactions that are not UniUni are silently skipped.
     procedure ToggleLinearSelected;
+
+    // Set IsBezier on all selected reactions (any stoichiometry).
+    // Clears IsLinear so the three modes stay mutually exclusive.
+    procedure SetBezierSelected;
+
+    // Set straight mode (IsBezier=False, IsLinear=False) on all selected
+    // reactions.  Junction is repositioned at the species midpoint for
+    // UniUni reactions so the handle appears in a sensible place.
+    procedure SetStraightSelected;
+
+    // Select all species and reactions.
+    procedure SelectAll;
   end;
 
 implementation
@@ -216,6 +304,14 @@ const
   CLR_RUBBER_FILL   : TAlphaColor = $330066CC;
   CLR_RUBBER_BORDER : TAlphaColor = $FF0066CC;
 
+  // Bézier control point handles
+  CLR_CTRL_FILL     : TAlphaColor = $FFFFFFFF;   // white fill
+  CLR_CTRL_BORDER   : TAlphaColor = $FF888800;   // dark yellow
+  CLR_CTRL_LINE     : TAlphaColor = $FFAAAAAA;   // grey guide line to endpoint
+
+  VIEW_CTRL_RADIUS  = 4.0;   // world px, handle circle radius
+  VIEW_CTRL_HIT     = 8.0;   // screen px, hit tolerance
+
 // ===========================================================================
 //  Construction / destruction
 // ===========================================================================
@@ -229,15 +325,24 @@ begin
   FZoom               := 1.0;
   FState              := isSelect;
   FShowAliasIndicator := True;
-  FNextSpeciesNum     := 1;
-  FPendingReactants   := TList<TSpeciesNode>.Create;
-  FPendingProducts    := TList<TSpeciesNode>.Create;
-  FSavedSpeciesPos    := TDictionary<TSpeciesNode, TPointF>.Create;
-  FSavedJunctionPos   := TDictionary<TReaction,    TPointF>.Create;
+  FDefaultBezier      := False;
+  FDraggedParticipant  := nil;
+  FDraggedCtrlNum      := 0;
+  FDragCtrlPtPartIdx   := -1;
+  FDragCtrlPtIsReactant:= False;
+  FNextSpeciesNum      := 1;
+  FPendingReactants    := TList<TSpeciesNode>.Create;
+  FPendingProducts     := TList<TSpeciesNode>.Create;
+  FSavedSpeciesPos     := TDictionary<TSpeciesNode, TPointF>.Create;
+  FSavedJunctionPos    := TDictionary<TReaction,    TPointF>.Create;
+  FUndoManager         := TUndoManager.Create;
+  // Build the restore callback once; it captures Self via closure.
+  FRestoreProc := MakeRestoreProc();
 end;
 
 destructor TDiagramView.Destroy;
 begin
+  FUndoManager.Free;
   FSavedJunctionPos.Free;
   FSavedSpeciesPos.Free;
   FPendingProducts.Free;
@@ -361,32 +466,107 @@ end;
 
 function TDiagramView.HitTestReactionLeg(const ScreenPt: TPointF;
                                          out R: TReaction): Boolean;
+const
+  BEZIER_SAMPLES = 20;  // number of segments to sample along each Bézier leg
 var
-  Reaction : TReaction;
-  P        : TParticipant;
-  JScr     : TPointF;
-  BoundW   : TPointF;
-  TipW     : TPointF;
+  Reaction  : TReaction;
+  P         : TParticipant;
+  JPos      : TPointF;
+  JScr      : TPointF;
+  BoundW    : TPointF;
+  TipW      : TPointF;
+  C1W, C2W  : TPointF;
+  FanTotal  : Integer;
+  i, k      : Integer;
+  t, t1     : Single;
+  PrevScr   : TPointF;
+  CurrScr   : TPointF;
+
+  // Evaluate a cubic Bézier at parameter t in screen space
+  function BezierScr(const P0, P1, P2, P3: TPointF; t: Single): TPointF;
+  var
+    mt : Single;
+  begin
+    mt := 1 - t;
+    Result.X := mt*mt*mt*P0.X + 3*mt*mt*t*P1.X + 3*mt*t*t*P2.X + t*t*t*P3.X;
+    Result.Y := mt*mt*mt*P0.Y + 3*mt*mt*t*P1.Y + 3*mt*t*t*P2.Y + t*t*t*P3.Y;
+  end;
+
+  // AJunctionAtEnd: True = reactant (centre->junction), False = product (junction->centre)
+  function HitBezierLeg(const StartW, EndW: TPointF;
+                        AP: TParticipant; AFanIdx, AFanTotal: Integer;
+                        AJunctionAtEnd: Boolean): Boolean;
+  var
+    PtW  : TPointF;
+    k    : Integer;
+  begin
+    GetCtrlPts(AP, StartW, EndW, AFanIdx, AFanTotal, AJunctionAtEnd, C1W, C2W);
+    PrevScr := W2S(StartW);
+    for k := 1 to BEZIER_SAMPLES do
+    begin
+      t    := k / BEZIER_SAMPLES;
+      PtW  := BezierEval(StartW, C1W, C2W, EndW, t);
+      // Skip segments that lie entirely inside the species rectangle
+      // (the node is drawn on top; those parts are invisible anyway).
+      if not AP.Species.BoundsRect.Contains(PtW) then
+      begin
+        CurrScr := W2S(PtW);
+        if PointToSegmentDist(ScreenPt, PrevScr, CurrScr) <= VIEW_HIT_SEGMENT then
+        begin
+          Result := True; Exit;
+        end;
+        PrevScr := CurrScr;
+      end;
+    end;
+    Result := False;
+  end;
+
 begin
   Result := False; R := nil;
+
   for Reaction in FModel.Reactions do
   begin
-    JScr := W2S(EffectiveJunctionPos(Reaction));
+    JPos := EffectiveJunctionPos(Reaction);
+    JScr := W2S(JPos);
 
-    for P in Reaction.Reactants do
+    if Reaction.IsBezier then
     begin
-      BoundW := RectBoundaryIntersect(P.Species.Center, P.Species.HalfW,
-                                      P.Species.HalfH, EffectiveJunctionPos(Reaction));
-      if PointToSegmentDist(ScreenPt, W2S(BoundW), JScr) <= VIEW_HIT_SEGMENT then
-      begin R := Reaction; Result := True; Exit; end;
-    end;
+      // Reactant legs — sample along the Bézier curve
+      FanTotal := Reaction.Reactants.Count;
+      for i := 0 to FanTotal - 1 do
+      begin
+        P      := Reaction.Reactants[i];
+        if HitBezierLeg(P.Species.Center, JPos, P, i, FanTotal, True) then
+        begin R := Reaction; Result := True; Exit; end;
+      end;
 
-    for P in Reaction.Products do
+      // Product legs
+      FanTotal := Reaction.Products.Count;
+      for i := 0 to FanTotal - 1 do
+      begin
+        P    := Reaction.Products[i];
+        if HitBezierLeg(JPos, P.Species.Center, P, i, FanTotal, False) then
+        begin R := Reaction; Result := True; Exit; end;
+      end;
+    end
+    else
     begin
-      TipW := ProductLineTip(P.Species.Center, P.Species.HalfW, P.Species.HalfH,
-                              EffectiveJunctionPos(Reaction), VIEW_PRODUCT_GAP);
-      if PointToSegmentDist(ScreenPt, JScr, W2S(TipW)) <= VIEW_HIT_SEGMENT then
-      begin R := Reaction; Result := True; Exit; end;
+      // Straight legs — test against line segment as before
+      for P in Reaction.Reactants do
+      begin
+        BoundW := RectBoundaryIntersect(P.Species.Center, P.Species.HalfW,
+                                        P.Species.HalfH, JPos);
+        if PointToSegmentDist(ScreenPt, W2S(BoundW), JScr) <= VIEW_HIT_SEGMENT then
+        begin R := Reaction; Result := True; Exit; end;
+      end;
+
+      for P in Reaction.Products do
+      begin
+        TipW := ProductLineTip(P.Species.Center, P.Species.HalfW,
+                                P.Species.HalfH, JPos, VIEW_PRODUCT_GAP);
+        if PointToSegmentDist(ScreenPt, JScr, W2S(TipW)) <= VIEW_HIT_SEGMENT then
+        begin R := Reaction; Result := True; Exit; end;
+      end;
     end;
   end;
 end;
@@ -428,12 +608,19 @@ end;
 // ===========================================================================
 
 function TDiagramView.CreateAliasAt(APrimary: TSpeciesNode): TSpeciesNode;
+var
+  SnapBefore : string;
+  SnapNum    : Integer;
 begin
+  SnapBefore := TakeSnapshot;
+  SnapNum    := FNextSpeciesNum;
   Result := FModel.AddAlias(APrimary,
     APrimary.Center.X + VIEW_ALIAS_OFFSET,
     APrimary.Center.Y + VIEW_ALIAS_OFFSET);
   FModel.ClearSelection;
   Result.Selected := True;
+  FUndoManager.Push(TSnapshotCmd.Create('Create alias', FModel,
+    SnapBefore, TakeSnapshot, SnapNum, FNextSpeciesNum, FRestoreProc));
 end;
 
 procedure TDiagramView.GoToPrimary(AAlias: TSpeciesNode);
@@ -582,6 +769,8 @@ begin
   if (FPendingReactants.Count <> FPendingReactantCount) or
      (FPendingProducts.Count  <> FPendingProductCount) then Exit;
 
+  var SnapBefore := TakeSnapshot;
+  var SnapNum    := FNextSpeciesNum;
   JPos := ComputeJunctionPos(FPendingReactants, FPendingProducts);
   R    := FModel.AddReaction(JPos.X, JPos.Y);
 
@@ -602,11 +791,21 @@ begin
 
   R.KineticLaw := RateLaw;
 
+  // When DefaultBezier is on, every new reaction (including UniUni) is Bezier.
+  // Otherwise UniUni defaults to a collinear straight line.
+  if FDefaultBezier then
+    R.IsBezier := True
+  else if (R.Reactants.Count = 1) and (R.Products.Count = 1) then
+    R.IsLinear := True;
+  // else: straight multi-participant -- IsLinear and IsBezier both False
+
   // Add the rate constant as a parameter with a default value of 0.1
   // only if a parameter with this name does not already exist.
   if not Assigned(FModel.FindParameterByVar(KName)) then
     FModel.AddParameter(KName, '0.1');
 
+  FUndoManager.Push(TSnapshotCmd.Create('Add reaction', FModel,
+    SnapBefore, TakeSnapshot, SnapNum, FNextSpeciesNum, FRestoreProc));
   ClearPendingReaction;
   // Stay in isAddReaction for the next reaction of the same type
 end;
@@ -649,16 +848,24 @@ var
   S            : TSpeciesNode;
   R            : TReaction;
   Dummy        : TArray<string>;
+  SnapBefore   : string;
+  SnapNum      : Integer;
 begin
   SelSpecies   := FModel.SelectedSpecies;
   SelReactions := FModel.SelectedReactions;
   if (Length(SelSpecies) = 0) and (Length(SelReactions) = 0) then Exit;
+
+  SnapBefore := TakeSnapshot;
+  SnapNum    := FNextSpeciesNum;
 
   for S in SelSpecies do FModel.DeleteSpecies(S, Dummy);
 
   for R in SelReactions do
     if FModel.FindReactionById(R.Id) <> nil then
       FModel.DeleteReaction(R);
+
+  FUndoManager.Push(TSnapshotCmd.Create('Delete', FModel,
+    SnapBefore, TakeSnapshot, SnapNum, FNextSpeciesNum, FRestoreProc));
 end;
 
 // ===========================================================================
@@ -702,6 +909,12 @@ begin
     begin
       CancelCurrentAction; FModel.ClearSelection; Key := 0;
     end;
+    Ord('A'), Ord('a'):
+      if ssCtrl in Shift then
+      begin
+        SelectAll;
+        Key := 0;
+      end;
   end;
 end;
 
@@ -724,7 +937,13 @@ begin
 
   case FState of
     isAddSpecies:
+    begin
+      var SnapBefore := TakeSnapshot;
+      var SnapNum    := FNextSpeciesNum;
       FModel.AddSpecies(NextSpeciesName, WorldPt.X, WorldPt.Y);
+      FUndoManager.Push(TSnapshotCmd.Create('Add species', FModel,
+        SnapBefore, TakeSnapshot, SnapNum, FNextSpeciesNum, FRestoreProc));
+    end;
 
     isAddReaction:
     begin
@@ -745,13 +964,36 @@ begin
 
     isSelect:
     begin
-      if HitTestJunction(ScreenPt, HitReaction) then
+      // Priority: ctrl pt handle > junction > species > leg > rubber-band
+      if HitTestCtrlPt(ScreenPt, FDraggedParticipant, FDraggedCtrlNum,
+                        FDragAutoC1, FDragAutoC2) then
+      begin
+        // Capture old state for undo BEFORE materialising.
+        FDragCtrlPtOldState.Ctrl1      := FDraggedParticipant.Ctrl1;
+        FDragCtrlPtOldState.Ctrl2      := FDraggedParticipant.Ctrl2;
+        FDragCtrlPtOldState.CtrlPtsSet := FDraggedParticipant.CtrlPtsSet;
+        FindParticipantInfo(FDraggedParticipant,
+                            FDragCtrlPtReactionId,
+                            FDragCtrlPtIsReactant,
+                            FDragCtrlPtPartIdx);
+        // Materialise both ctrl pts from auto values so the undragged handle
+        // is never left at (0,0).
+        if not FDraggedParticipant.CtrlPtsSet then
+        begin
+          FDraggedParticipant.Ctrl1      := FDragAutoC1;
+          FDraggedParticipant.Ctrl2      := FDragAutoC2;
+          FDraggedParticipant.CtrlPtsSet := True;
+        end;
+        FState := isDraggingCtrlPt;
+      end
+      else if HitTestJunction(ScreenPt, HitReaction) then
       begin
         if not (ssShift in Shift) then FModel.ClearSelection;
-        HitReaction.Selected := True;
-        FDraggedJunction     := HitReaction;
-        FDragAnchorWorld     := WorldPt;
-        FState               := isDraggingJunction;
+        HitReaction.Selected  := True;
+        FDraggedJunction      := HitReaction;
+        FDragJunctionOldPos   := HitReaction.JunctionPos;  // for undo
+        FDragAnchorWorld      := WorldPt;
+        FState                := isDraggingJunction;
       end
       else if HitTestSpecies(WorldPt, HitSpecies) then
       begin
@@ -808,6 +1050,15 @@ begin
         WorldPt.X - FDragAnchorWorld.X, WorldPt.Y - FDragAnchorWorld.Y));
     isDraggingJunction:
       FDraggedJunction.JunctionPos := WorldPt;
+    isDraggingCtrlPt:
+    begin
+      // Move the dragged control point to the world position and mark as set.
+      if FDraggedCtrlNum = 1 then
+        FDraggedParticipant.Ctrl1 := WorldPt
+      else
+        FDraggedParticipant.Ctrl2 := WorldPt;
+      FDraggedParticipant.CtrlPtsSet := True;
+    end;
     isRubberBand:
       FRubberCurScr := ScreenPt;
   end;
@@ -815,12 +1066,82 @@ end;
 
 procedure TDiagramView.MouseUp(Button: TMouseButton; Shift: TShiftState;
                                 X, Y: Single);
+var
+  SpecBefore, SpecAfter : TDictionary<string, TPointF>;
+  JctBefore, JctAfter   : TDictionary<string, TPointF>;
+  Pair  : TPair<TSpeciesNode, TPointF>;
+  RPair : TPair<TReaction,    TPointF>;
+  NewState : TCtrlPtState;
+  AnyMoved : Boolean;
 begin
   if Button <> TMouseButton.mbLeft then Exit;
   FMouseScreen := TPointF.Create(X, Y);
   FMouseWorld  := S2W(FMouseScreen);
+
   case FState of
-    isDraggingNodes, isDraggingJunction: FState := isSelect;
+    isDraggingNodes:
+    begin
+      // Build before/after position dicts keyed by string Id.
+      SpecBefore := TDictionary<string, TPointF>.Create;
+      SpecAfter  := TDictionary<string, TPointF>.Create;
+      JctBefore  := TDictionary<string, TPointF>.Create;
+      JctAfter   := TDictionary<string, TPointF>.Create;
+      AnyMoved   := False;
+      for Pair in FSavedSpeciesPos do
+      begin
+        SpecBefore.AddOrSetValue(Pair.Key.Id, Pair.Value);
+        SpecAfter.AddOrSetValue (Pair.Key.Id, Pair.Key.Center);
+        if (Pair.Value.X <> Pair.Key.Center.X) or
+           (Pair.Value.Y <> Pair.Key.Center.Y) then AnyMoved := True;
+      end;
+      for RPair in FSavedJunctionPos do
+      begin
+        JctBefore.AddOrSetValue(RPair.Key.Id, RPair.Value);
+        JctAfter.AddOrSetValue (RPair.Key.Id, RPair.Key.JunctionPos);
+        if (RPair.Value.X <> RPair.Key.JunctionPos.X) or
+           (RPair.Value.Y <> RPair.Key.JunctionPos.Y) then AnyMoved := True;
+      end;
+      if AnyMoved then
+        FUndoManager.Push(TMoveNodesCmd.Create(FModel,
+          SpecBefore, SpecAfter, JctBefore, JctAfter))
+      else
+      begin
+        SpecBefore.Free; SpecAfter.Free;
+        JctBefore.Free;  JctAfter.Free;
+      end;
+      FState := isSelect;
+    end;
+
+    isDraggingJunction:
+    begin
+      if (FDragJunctionOldPos.X <> FDraggedJunction.JunctionPos.X) or
+         (FDragJunctionOldPos.Y <> FDraggedJunction.JunctionPos.Y) then
+        FUndoManager.Push(TMoveJunctionCmd.Create(FModel,
+          FDraggedJunction.Id,
+          FDragJunctionOldPos, FDraggedJunction.JunctionPos));
+      FState := isSelect;
+    end;
+
+    isDraggingCtrlPt:
+    begin
+      if Assigned(FDraggedParticipant) then
+      begin
+        NewState.Ctrl1      := FDraggedParticipant.Ctrl1;
+        NewState.Ctrl2      := FDraggedParticipant.Ctrl2;
+        NewState.CtrlPtsSet := FDraggedParticipant.CtrlPtsSet;
+        // Only push if something actually changed.
+        if (NewState.Ctrl1.X      <> FDragCtrlPtOldState.Ctrl1.X) or
+           (NewState.Ctrl1.Y      <> FDragCtrlPtOldState.Ctrl1.Y) or
+           (NewState.Ctrl2.X      <> FDragCtrlPtOldState.Ctrl2.X) or
+           (NewState.Ctrl2.Y      <> FDragCtrlPtOldState.Ctrl2.Y) or
+           (NewState.CtrlPtsSet   <> FDragCtrlPtOldState.CtrlPtsSet) then
+          FUndoManager.Push(TDragCtrlPtCmd.Create(FModel,
+            FDragCtrlPtReactionId, FDragCtrlPtIsReactant, FDragCtrlPtPartIdx,
+            FDragCtrlPtOldState, NewState));
+      end;
+      FState := isSelect;
+    end;
+
     isRubberBand:
     begin
       FRubberCurScr := FMouseScreen;
@@ -842,30 +1163,104 @@ begin
   if HitSpecies.IsAlias then EditTarget := HitSpecies.AliasOf;
   NewName := InputBox('Rename Species', 'Name:', EditTarget.Name);
   if (NewName <> '') and (NewName <> EditTarget.Name) then
+  begin
+    var SnapBefore := TakeSnapshot;
+    var SnapNum    := FNextSpeciesNum;
     EditTarget.Name := NewName;
+    FUndoManager.Push(TSnapshotCmd.Create('Rename', FModel,
+      SnapBefore, TakeSnapshot, SnapNum, FNextSpeciesNum, FRestoreProc));
+  end;
+end;
+
+procedure TDiagramView.SelectAll;
+var
+  S : TSpeciesNode;
+  R : TReaction;
+begin
+  for S in FModel.Species   do S.Selected := True;
+  for R in FModel.Reactions do R.Selected := True;
 end;
 
 procedure TDiagramView.ToggleLinearSelected;
 var
-  R    : TReaction;
-  A, B : TPointF;
+  R          : TReaction;
+  A, B       : TPointF;
+  SnapBefore : string;
+  SnapNum    : Integer;
 begin
+  SnapBefore := TakeSnapshot;
+  SnapNum    := FNextSpeciesNum;
+
   for R in FModel.Reactions do
     if R.Selected and (R.Reactants.Count = 1) and (R.Products.Count = 1) then
     begin
       R.IsLinear := not R.IsLinear;
 
-      // When switching linearity OFF, place the junction at the midpoint of
-      // the current species positions so the handle reappears sensibly
-      // regardless of how far the nodes have moved since linearity was set.
-      if not R.IsLinear then
+      if R.IsLinear then
       begin
+        // Switching TO linear: Bezier mode and its handles must be hidden.
+        R.IsBezier := False;
+      end
+      else
+      begin
+        // Switching OFF linear: place the junction at the midpoint so the
+        // handle reappears sensibly regardless of how far nodes have moved.
         A := R.Reactants[0].Species.Center;
         B := R.Products[0].Species.Center;
         R.JunctionPos := TPointF.Create(
           (A.X + B.X) * 0.5, (A.Y + B.Y) * 0.5);
       end;
     end;
+
+  FUndoManager.Push(TSnapshotCmd.Create('Toggle linear', FModel,
+    SnapBefore, TakeSnapshot, SnapNum, FNextSpeciesNum, FRestoreProc));
+end;
+
+// ---------------------------------------------------------------------------
+
+procedure TDiagramView.SetBezierSelected;
+var
+  R          : TReaction;
+  SnapBefore : string;
+  SnapNum    : Integer;
+begin
+  SnapBefore := TakeSnapshot;
+  SnapNum    := FNextSpeciesNum;
+  for R in FModel.Reactions do
+    if R.Selected then
+    begin
+      R.IsBezier := True;
+      R.IsLinear := False;
+    end;
+  FUndoManager.Push(TSnapshotCmd.Create('Set Bezier', FModel,
+    SnapBefore, TakeSnapshot, SnapNum, FNextSpeciesNum, FRestoreProc));
+end;
+
+// ---------------------------------------------------------------------------
+
+procedure TDiagramView.SetStraightSelected;
+var
+  R          : TReaction;
+  A, B       : TPointF;
+  SnapBefore : string;
+  SnapNum    : Integer;
+begin
+  SnapBefore := TakeSnapshot;
+  SnapNum    := FNextSpeciesNum;
+  for R in FModel.Reactions do
+    if R.Selected then
+    begin
+      R.IsBezier := False;
+      R.IsLinear := False;
+      if (R.Reactants.Count = 1) and (R.Products.Count = 1) then
+      begin
+        A := R.Reactants[0].Species.Center;
+        B := R.Products[0].Species.Center;
+        R.JunctionPos := TPointF.Create((A.X + B.X) * 0.5, (A.Y + B.Y) * 0.5);
+      end;
+    end;
+  FUndoManager.Push(TSnapshotCmd.Create('Set straight', FModel,
+    SnapBefore, TakeSnapshot, SnapNum, FNextSpeciesNum, FRestoreProc));
 end;
 
 // ===========================================================================
@@ -917,6 +1312,297 @@ begin
 end;
 
 // ===========================================================================
+//  Bézier helpers
+// ===========================================================================
+
+procedure TDiagramView.ComputeAutoCtrlPts(const AStart, AEnd: TPointF;
+                                           AFanIndex, AFanTotal: Integer;
+                                           AJunctionAtEnd: Boolean;
+                                           out ACtrl1, ACtrl2: TPointF);
+// AStart/AEnd are the conceptual leg endpoints:
+//   Reactant leg (AJunctionAtEnd=True):  AStart = species.Centre, AEnd = junction
+//   Product  leg (AJunctionAtEnd=False): AStart = junction, AEnd  = species.Centre
+//
+// Fan offset is applied ONLY at the junction-end control point so that
+// the curve leaves/arrives at the species node tangent to the centre-junction
+// direction, eliminating the "corner" artefact.
+const
+  CTRL_DIST_FRAC = 0.35;
+  FAN_SPREAD     = 50.0;
+var
+  Dir    : TPointF;
+  Perp   : TPointF;
+  Len    : Single;
+  Offset : Single;
+begin
+  Dir.X := AEnd.X - AStart.X;
+  Dir.Y := AEnd.Y - AStart.Y;
+  Len   := Sqrt(Dir.X * Dir.X + Dir.Y * Dir.Y);
+
+  if Len < 1.0 then
+  begin
+    ACtrl1 := AStart;
+    ACtrl2 := AEnd;
+    Exit;
+  end;
+
+  Dir.X := Dir.X / Len;
+  Dir.Y := Dir.Y / Len;
+
+  // Perpendicular (CCW)
+  Perp.X := -Dir.Y;
+  Perp.Y :=  Dir.X;
+
+  if AFanTotal <= 1 then
+    Offset := 0
+  else
+    Offset := (AFanIndex - (AFanTotal - 1) * 0.5) * FAN_SPREAD;
+
+  if AJunctionAtEnd then
+  begin
+    // Reactant: AStart = species centre, AEnd = junction.
+    // Ctrl1 no offset (clean exit from centre), Ctrl2 fan offset at junction.
+    ACtrl1.X := AStart.X + Dir.X * Len * CTRL_DIST_FRAC;
+    ACtrl1.Y := AStart.Y + Dir.Y * Len * CTRL_DIST_FRAC;
+    ACtrl2.X := AEnd.X   - Dir.X * Len * CTRL_DIST_FRAC + Perp.X * Offset;
+    ACtrl2.Y := AEnd.Y   - Dir.Y * Len * CTRL_DIST_FRAC + Perp.Y * Offset;
+  end
+  else
+  begin
+    // Product: AStart = junction, AEnd = species centre.
+    // Ctrl1 fan offset at junction, Ctrl2 no offset (clean arrival at centre).
+    ACtrl1.X := AStart.X + Dir.X * Len * CTRL_DIST_FRAC + Perp.X * Offset;
+    ACtrl1.Y := AStart.Y + Dir.Y * Len * CTRL_DIST_FRAC + Perp.Y * Offset;
+    ACtrl2.X := AEnd.X   - Dir.X * Len * CTRL_DIST_FRAC;
+    ACtrl2.Y := AEnd.Y   - Dir.Y * Len * CTRL_DIST_FRAC;
+  end;
+end;
+
+// ---------------------------------------------------------------------------
+
+procedure TDiagramView.GetCtrlPts(P: TParticipant;
+                                   const AStart, AEnd: TPointF;
+                                   AFanIndex, AFanTotal: Integer;
+                                   AJunctionAtEnd: Boolean;
+                                   out ACtrl1, ACtrl2: TPointF);
+begin
+  if P.CtrlPtsSet then
+  begin
+    ACtrl1 := P.Ctrl1;
+    ACtrl2 := P.Ctrl2;
+  end
+  else
+    ComputeAutoCtrlPts(AStart, AEnd, AFanIndex, AFanTotal, AJunctionAtEnd, ACtrl1, ACtrl2);
+end;
+
+// ---------------------------------------------------------------------------
+//  Bezier geometry helpers
+// ---------------------------------------------------------------------------
+
+function TDiagramView.BezierEval(const P0, C1, C2, P3: TPointF;
+                                  t: Single): TPointF;
+var
+  mt : Single;
+begin
+  mt := 1.0 - t;
+  Result.X := mt*mt*mt*P0.X + 3*mt*mt*t*C1.X + 3*mt*t*t*C2.X + t*t*t*P3.X;
+  Result.Y := mt*mt*mt*P0.Y + 3*mt*mt*t*C1.Y + 3*mt*t*t*C2.Y + t*t*t*P3.Y;
+end;
+
+// ---------------------------------------------------------------------------
+
+function TDiagramView.BezierBoundaryT(const P0, C1, C2, P3: TPointF;
+                                       const Centre: TPointF;
+                                       HalfW, HalfH: Single;
+                                       AInsideAtZero: Boolean): Single;
+// Binary search for the parameter t in [0,1] where the cubic Bezier
+// transitions between inside and outside the axis-aligned rectangle.
+//
+// For a reactant leg (AInsideAtZero=True):
+//   P0 = species centre (inside), P3 = junction (outside).
+//   Returns the t where the curve first exits the rectangle.
+//
+// For a product leg (AInsideAtZero=False):
+//   P0 = junction (outside), P3 = species centre (inside).
+//   Returns the t where the curve enters the rectangle.
+//
+// Result is clamped to [0.001, 0.999] to avoid degenerate tip positions.
+const
+  BISECT_STEPS = 24;
+  T_MIN        = 0.001;
+  T_MAX        = 0.999;
+var
+  tLo, tHi, tMid : Single;
+  Pt              : TPointF;
+
+  function IsInside(const P: TPointF): Boolean;
+  begin
+    Result := (Abs(P.X - Centre.X) <= HalfW) and
+              (Abs(P.Y - Centre.Y) <= HalfH);
+  end;
+
+  var step : Integer;
+begin
+  tLo := 0.0;
+  tHi := 1.0;
+  for step := 0 to BISECT_STEPS - 1 do
+  begin
+    tMid := (tLo + tHi) * 0.5;
+    Pt   := BezierEval(P0, C1, C2, P3, tMid);
+    if IsInside(Pt) = AInsideAtZero then
+      tLo := tMid
+    else
+      tHi := tMid;
+  end;
+  Result := Max(T_MIN, Min(T_MAX, (tLo + tHi) * 0.5));
+end;
+
+// ---------------------------------------------------------------------------
+
+procedure TDiagramView.BezierLeftHalf(const P0, C1, C2, P3: TPointF;
+                                       t: Single;
+                                       out L0, L1, L2, L3: TPointF);
+// De Casteljau split — returns the LEFT sub-curve [0..t]: (L0, L1, L2, L3).
+// L3 is the point on the original curve at parameter t.
+// Tangent at L3 is proportional to (L3 - L2).
+var
+  P01, P12, P23 : TPointF;
+  P012, P123    : TPointF;
+
+  function Lerp(const A, B: TPointF; s: Single): TPointF; inline;
+  begin
+    Result.X := A.X + s * (B.X - A.X);
+    Result.Y := A.Y + s * (B.Y - A.Y);
+  end;
+begin
+  P01  := Lerp(P0, C1, t);
+  P12  := Lerp(C1, C2, t);
+  P23  := Lerp(C2, P3, t);
+  P012 := Lerp(P01, P12, t);
+  P123 := Lerp(P12, P23, t);
+  L0 := P0;
+  L1 := P01;
+  L2 := P012;
+  L3 := Lerp(P012, P123, t);   // point on curve at t
+end;
+
+// ---------------------------------------------------------------------------
+
+procedure TDiagramView.BezierRightHalf(const P0, C1, C2, P3: TPointF;
+                                        t: Single;
+                                        out R0, R1, R2, R3: TPointF);
+// De Casteljau split — returns the RIGHT sub-curve [t..1]: (R0, R1, R2, R3).
+// R0 is the point on the original curve at parameter t.
+// Tangent at R0 is proportional to (R1 - R0).
+var
+  P01, P12, P23 : TPointF;
+  P012, P123    : TPointF;
+
+  function Lerp(const A, B: TPointF; s: Single): TPointF; inline;
+  begin
+    Result.X := A.X + s * (B.X - A.X);
+    Result.Y := A.Y + s * (B.Y - A.Y);
+  end;
+begin
+  P01  := Lerp(P0, C1, t);
+  P12  := Lerp(C1, C2, t);
+  P23  := Lerp(C2, P3, t);
+  P012 := Lerp(P01, P12, t);
+  P123 := Lerp(P12, P23, t);
+  R0 := Lerp(P012, P123, t);   // point on curve at t
+  R1 := P123;
+  R2 := P23;
+  R3 := P3;
+end;
+
+// ---------------------------------------------------------------------------
+
+function TDiagramView.HitTestCtrlPt(const ScreenPt: TPointF;
+                                     out APart: TParticipant;
+                                     out ACtrlNum: Integer;
+                                     out AAutoC1, AAutoC2: TPointF): Boolean;
+// Endpoints are centre-based (matching RenderReactions and RenderCtrlPtHandles).
+// Always computes auto ctrl pts via ComputeAutoCtrlPts (not GetCtrlPts) so that
+// AAutoC1/AAutoC2 are available for pre-drag materialisation regardless of
+// whether CtrlPtsSet is already True.
+var
+  R          : TReaction;
+  P          : TParticipant;
+  C1W, C2W   : TPointF;
+  StartW     : TPointF;
+  EndW       : TPointF;
+  FanTotal   : Integer;
+  i          : Integer;
+
+  function TryHit(const AC1, AC2: TPointF): Boolean;
+  begin
+    if PointDist(ScreenPt, W2S(AC1)) <= VIEW_CTRL_HIT then
+    begin
+      ACtrlNum := 1; Result := True;
+    end
+    else if PointDist(ScreenPt, W2S(AC2)) <= VIEW_CTRL_HIT then
+    begin
+      ACtrlNum := 2; Result := True;
+    end
+    else
+      Result := False;
+  end;
+
+begin
+  Result   := False;
+  APart    := nil;
+  ACtrlNum := 0;
+  AAutoC1  := TPointF.Create(0, 0);
+  AAutoC2  := TPointF.Create(0, 0);
+
+  for R in FModel.Reactions do
+  begin
+    if not (R.Selected and R.IsBezier) then Continue;
+
+    // Reactant legs: Start = species centre, End = junction
+    FanTotal := R.Reactants.Count;
+    for i := 0 to FanTotal - 1 do
+    begin
+      P      := R.Reactants[i];
+      StartW := P.Species.Center;
+      EndW   := R.JunctionPos;
+      ComputeAutoCtrlPts(StartW, EndW, i, FanTotal, True, C1W, C2W);
+      // Test stored positions when already set, otherwise test auto positions
+      if P.CtrlPtsSet then
+      begin
+        if TryHit(P.Ctrl1, P.Ctrl2) then
+        begin APart := P; AAutoC1 := C1W; AAutoC2 := C2W; Result := True; Exit; end;
+      end
+      else
+      begin
+        if TryHit(C1W, C2W) then
+        begin APart := P; AAutoC1 := C1W; AAutoC2 := C2W; Result := True; Exit; end;
+      end;
+    end;
+
+    // Product legs: Start = junction, End = species centre
+    FanTotal := R.Products.Count;
+    for i := 0 to FanTotal - 1 do
+    begin
+      P      := R.Products[i];
+      StartW := R.JunctionPos;
+      EndW   := P.Species.Center;
+      ComputeAutoCtrlPts(StartW, EndW, i, FanTotal, False, C1W, C2W);
+      if P.CtrlPtsSet then
+      begin
+        if TryHit(P.Ctrl1, P.Ctrl2) then
+        begin APart := P; AAutoC1 := C1W; AAutoC2 := C2W; Result := True; Exit; end;
+      end
+      else
+      begin
+        if TryHit(C1W, C2W) then
+        begin APart := P; AAutoC1 := C1W; AAutoC2 := C2W; Result := True; Exit; end;
+      end;
+    end;
+  end;
+end;
+
+// ===========================================================================
 //  Render passes
 // ===========================================================================
 
@@ -933,17 +1619,27 @@ end;
 
 procedure TDiagramView.RenderReactions(const ACanvas: ISkCanvas);
 var
-  R         : TReaction;
-  P         : TParticipant;
-  JScr      : TPointF;
-  BoundW    : TPointF;
-  TipW      : TPointF;
-  TipScr    : TPointF;
-  DirW      : TPointF;
-  ArrW      : TArrowheadVertices;
-  ArrScr    : TArrowheadVertices;
-  LinePaint : ISkPaint;
-  LineColor : TAlphaColor;
+  R          : TReaction;
+  P          : TParticipant;
+  JPos       : TPointF;
+  JScr       : TPointF;
+  BoundW     : TPointF;
+  TipW       : TPointF;
+  TipScr     : TPointF;
+  DirW       : TPointF;
+  ArrW       : TArrowheadVertices;
+  ArrScr     : TArrowheadVertices;
+  LinePaint  : ISkPaint;
+  LineColor  : TAlphaColor;
+  C1W, C2W   : TPointF;
+  FanIdx     : Integer;
+  FanTotal   : Integer;
+  i          : Integer;
+  Builder    : ISkPathBuilder;
+  Path       : ISkPath;
+  tClip      : Single;
+  LA, LB, LC, LD : TPointF;   // left  sub-curve (product, junction→boundary)
+  RA, RB, RC, RD : TPointF;   // right sub-curve (reactant, boundary→junction)
 begin
   for R in FModel.Reactions do
   begin
@@ -957,31 +1653,20 @@ begin
     LinePaint.StrokeWidth := W2SLen(VIEW_LINE_WIDTH);
     LinePaint.StrokeCap   := TSkStrokeCap.Round;
 
-    // --- Linear UniUni: single straight line, no junction split -----------
-    // Drawing via the junction is skipped entirely for linear UniUni
-    // reactions.  The line goes directly from the reactant boundary to the
-    // product tip so the two segments can never overlap or overshoot.
+    // --- Linear UniUni: single straight line, no junction -----------------
     if R.IsLinear and (R.Reactants.Count = 1) and (R.Products.Count = 1) then
     begin
       var Reactant := R.Reactants[0].Species;
       var Product  := R.Products[0].Species;
-
-      // Direction: reactant centre → product centre
       DirW.X := Product.Center.X - Reactant.Center.X;
       DirW.Y := Product.Center.Y - Reactant.Center.Y;
       DirW   := NormalizeVec(DirW);
-
-      // Start: reactant boundary in the direction of the product
       BoundW := RectBoundaryIntersect(Reactant.Center, Reactant.HalfW,
                                       Reactant.HalfH, Product.Center);
-
-      // End: product boundary minus gap, approached from the reactant side
       TipW   := ProductLineTip(Product.Center, Product.HalfW,
                                 Product.HalfH, Reactant.Center, VIEW_PRODUCT_GAP);
       TipScr := W2S(TipW);
-
       ACanvas.DrawLine(W2S(BoundW), TipScr, LinePaint);
-
       ArrW         := FilledArrowhead(TipW, DirW, VIEW_ARROW_LEN, VIEW_ARROW_HALF_BASE);
       ArrScr.Tip   := W2S(ArrW.Tip);
       ArrScr.Base1 := W2S(ArrW.Base1);
@@ -990,27 +1675,91 @@ begin
       Continue;
     end;
 
-    // --- General case: reactant legs → junction → product legs ------------
-    JScr := W2S(EffectiveJunctionPos(R));
+    JPos := EffectiveJunctionPos(R);
+    JScr := W2S(JPos);
 
+    // --- Bezier reaction --------------------------------------------------
+    if R.IsBezier then
+    begin
+      // Reactant legs.
+      // Conceptual curve: species.Centre (inside node) --> junction.
+      // We clip it at the rectangle boundary and render only the exterior
+      // portion, so the curve exits the node face tangent to the centre-
+      // junction direction regardless of control point positions.
+      FanTotal := R.Reactants.Count;
+      for i := 0 to FanTotal - 1 do
+      begin
+        P := R.Reactants[i];
+        // Conceptual endpoints: centre --> junction
+        GetCtrlPts(P, P.Species.Center, JPos, i, FanTotal, True, C1W, C2W);
+        // Find t where the curve exits the species rectangle
+        tClip := BezierBoundaryT(P.Species.Center, C1W, C2W, JPos,
+                                  P.Species.Center, P.Species.HalfW,
+                                  P.Species.HalfH, True {inside at t=0});
+        // Right sub-curve [tClip..1]: RA is on the boundary, RD = junction
+        BezierRightHalf(P.Species.Center, C1W, C2W, JPos, tClip,
+                        RA, RB, RC, RD);
+        Builder := TSkPathBuilder.Create;
+        Builder.MoveTo(W2S(RA));
+        Builder.CubicTo(W2S(RB), W2S(RC), JScr);
+        Path := Builder.Detach;
+        ACanvas.DrawPath(Path, LinePaint);
+      end;
+
+      // Product legs.
+      // Conceptual curve: junction --> species.Centre (inside node).
+      // Clip at rectangle boundary; arrowhead tangent follows the curve
+      // at the crossing point, so it always "rotates about the centre".
+      FanTotal := R.Products.Count;
+      for i := 0 to FanTotal - 1 do
+      begin
+        P := R.Products[i];
+        // Conceptual endpoints: junction --> centre
+        GetCtrlPts(P, JPos, P.Species.Center, i, FanTotal, False, C1W, C2W);
+        // Find t where the curve enters the species rectangle
+        tClip := BezierBoundaryT(JPos, C1W, C2W, P.Species.Center,
+                                  P.Species.Center, P.Species.HalfW,
+                                  P.Species.HalfH, False {outside at t=0});
+        // Left sub-curve [0..tClip]: LA = junction, LD is on the boundary
+        BezierLeftHalf(JPos, C1W, C2W, P.Species.Center, tClip,
+                       LA, LB, LC, LD);
+        Builder := TSkPathBuilder.Create;
+        Builder.MoveTo(JScr);
+        Builder.CubicTo(W2S(LB), W2S(LC), W2S(LD));
+        Path := Builder.Detach;
+        ACanvas.DrawPath(Path, LinePaint);
+
+        // Arrowhead: tangent at the boundary crossing = (LD - LC) direction.
+        // This naturally "rotates about the species centre" as ctrl pts move.
+        DirW.X := LD.X - LC.X;
+        DirW.Y := LD.Y - LC.Y;
+        DirW   := NormalizeVec(DirW);
+        ArrW         := FilledArrowhead(LD, DirW, VIEW_ARROW_LEN, VIEW_ARROW_HALF_BASE);
+        ArrScr.Tip   := W2S(ArrW.Tip);
+        ArrScr.Base1 := W2S(ArrW.Base1);
+        ArrScr.Base2 := W2S(ArrW.Base2);
+        DrawFilledTriangle(ACanvas, ArrScr, LineColor);
+      end;
+      Continue;
+    end;
+
+    // --- Straight reaction ------------------------------------------------
     for P in R.Reactants do
     begin
       BoundW := RectBoundaryIntersect(P.Species.Center, P.Species.HalfW,
-                                      P.Species.HalfH, EffectiveJunctionPos(R));
+                                      P.Species.HalfH, JPos);
       ACanvas.DrawLine(W2S(BoundW), JScr, LinePaint);
     end;
 
     for P in R.Products do
     begin
       TipW   := ProductLineTip(P.Species.Center, P.Species.HalfW,
-                                P.Species.HalfH, EffectiveJunctionPos(R), VIEW_PRODUCT_GAP);
+                                P.Species.HalfH, JPos, VIEW_PRODUCT_GAP);
       TipScr := W2S(TipW);
       ACanvas.DrawLine(JScr, TipScr, LinePaint);
-
-      DirW.X := P.Species.Center.X - EffectiveJunctionPos(R).X;
-      DirW.Y := P.Species.Center.Y - EffectiveJunctionPos(R).Y;
+      DirW.X := P.Species.Center.X - JPos.X;
+      DirW.Y := P.Species.Center.Y - JPos.Y;
       DirW   := NormalizeVec(DirW);
-
       ArrW         := FilledArrowhead(TipW, DirW, VIEW_ARROW_LEN, VIEW_ARROW_HALF_BASE);
       ArrScr.Tip   := W2S(ArrW.Tip);
       ArrScr.Base1 := W2S(ArrW.Base1);
@@ -1196,6 +1945,173 @@ begin
   ACanvas.DrawRect(BandRect, LinePaint);
 end;
 
+procedure TDiagramView.RenderCtrlPtHandles(const ACanvas: ISkCanvas);
+// Draw small circles at each Bézier control point for selected Bézier reactions,
+// plus dashed lines from the handle to its respective endpoint (tangent arm).
+var
+  R          : TReaction;
+  P          : TParticipant;
+  C1W, C2W   : TPointF;
+  StartW     : TPointF;
+  EndW       : TPointF;
+  FanIdx     : Integer;
+  FanTotal   : Integer;
+  i          : Integer;
+  FillPaint  : ISkPaint;
+  RingPaint  : ISkPaint;
+  Radius     : Single;
+
+  procedure DrawHandle(const CW: TPointF; const AnchorW: TPointF);
+  begin
+    DrawDashedLine(ACanvas, W2S(AnchorW), W2S(CW), CLR_CTRL_LINE, 1.0);
+    ACanvas.DrawCircle(W2S(CW), Radius, FillPaint);
+    ACanvas.DrawCircle(W2S(CW), Radius, RingPaint);
+  end;
+
+begin
+  Radius := W2SLen(VIEW_CTRL_RADIUS);
+
+  FillPaint           := TSkPaint.Create;
+  FillPaint.AntiAlias := True;
+  FillPaint.Color     := CLR_CTRL_FILL;
+  FillPaint.Style     := TSkPaintStyle.Fill;
+
+  RingPaint             := TSkPaint.Create;
+  RingPaint.AntiAlias   := True;
+  RingPaint.Color       := CLR_CTRL_BORDER;
+  RingPaint.Style       := TSkPaintStyle.Stroke;
+  RingPaint.StrokeWidth := W2SLen(1.0);
+
+  for R in FModel.Reactions do
+  begin
+    if not (R.Selected and R.IsBezier) then Continue;
+
+    var JPos := R.JunctionPos;
+
+    // Reactant control point handles.
+    // StartW = species centre (conceptual curve start, may be inside node).
+    FanTotal := R.Reactants.Count;
+    for i := 0 to FanTotal - 1 do
+    begin
+      P      := R.Reactants[i];
+      StartW := P.Species.Center;
+      EndW   := JPos;
+      GetCtrlPts(P, StartW, EndW, i, FanTotal, True, C1W, C2W);
+      DrawHandle(C1W, StartW);  // Ctrl1 anchored to species centre
+      DrawHandle(C2W, EndW);    // Ctrl2 anchored to junction
+    end;
+
+    // Product control point handles.
+    // EndW = species centre (conceptual curve end, may be inside node).
+    FanTotal := R.Products.Count;
+    for i := 0 to FanTotal - 1 do
+    begin
+      P      := R.Products[i];
+      StartW := JPos;
+      EndW   := P.Species.Center;
+      GetCtrlPts(P, StartW, EndW, i, FanTotal, False, C1W, C2W);
+      DrawHandle(C1W, StartW);  // Ctrl1 anchored to junction
+      DrawHandle(C2W, EndW);    // Ctrl2 anchored to species centre
+    end;
+  end;
+end;
+
+// ===========================================================================
+//  Undo helpers
+// ===========================================================================
+
+function TDiagramView.TakeSnapshot: string;
+var
+  JObj : TJSONObject;
+begin
+  JObj := FModel.ToJSONObject;
+  try
+    Result := JObj.ToJSON;  // compact — no indentation needed for undo snapshots
+  finally
+    JObj.Free;
+  end;
+end;
+
+// ---------------------------------------------------------------------------
+
+function TDiagramView.MakeRestoreProc: TAfterRestoreProc;
+begin
+  // Capture FModel and self by reference so the lambda is self-contained.
+  Result := procedure(ANextSpeciesNum: Integer)
+  begin
+    FNextSpeciesNum := ANextSpeciesNum;
+    SyncSpeciesNameCounter;   // re-sync from model in case it disagrees
+    FModel.ClearSelection;
+  end;
+end;
+
+// ---------------------------------------------------------------------------
+
+function TDiagramView.FindParticipantInfo(APart: TParticipant;
+                                           out AReactionId  : string;
+                                           out AIsReactant  : Boolean;
+                                           out AIndex       : Integer): Boolean;
+var
+  R : TReaction;
+  i : Integer;
+begin
+  Result     := False;
+  AReactionId := '';
+  AIsReactant := False;
+  AIndex      := -1;
+  for R in FModel.Reactions do
+  begin
+    for i := 0 to R.Reactants.Count - 1 do
+      if R.Reactants[i] = APart then
+      begin
+        AReactionId := R.Id; AIsReactant := True; AIndex := i;
+        Result := True; Exit;
+      end;
+    for i := 0 to R.Products.Count - 1 do
+      if R.Products[i] = APart then
+      begin
+        AReactionId := R.Id; AIsReactant := False; AIndex := i;
+        Result := True; Exit;
+      end;
+  end;
+end;
+
+// ---------------------------------------------------------------------------
+
+procedure TDiagramView.ClearTransientState;
+begin
+  FDraggedParticipant   := nil;
+  FDraggedJunction      := nil;
+  FDraggedCtrlNum       := 0;
+  FDragCtrlPtPartIdx    := -1;
+end;
+
+// ---------------------------------------------------------------------------
+
+procedure TDiagramView.Undo;
+begin
+  ClearTransientState;
+  FUndoManager.Undo;
+end;
+
+procedure TDiagramView.Redo;
+begin
+  ClearTransientState;
+  FUndoManager.Redo;
+end;
+
+function TDiagramView.CanUndo: Boolean;
+begin Result := FUndoManager.CanUndo; end;
+
+function TDiagramView.CanRedo: Boolean;
+begin Result := FUndoManager.CanRedo; end;
+
+function TDiagramView.UndoDescription: string;
+begin Result := FUndoManager.UndoDescription; end;
+
+function TDiagramView.RedoDescription: string;
+begin Result := FUndoManager.RedoDescription; end;
+
 // ===========================================================================
 //  Render — entry point
 // ===========================================================================
@@ -1207,6 +2123,7 @@ begin
   RenderReactions      (ACanvas);
   RenderSpeciesNodes   (ACanvas);
   RenderJunctionHandles(ACanvas);
+  RenderCtrlPtHandles  (ACanvas);   // on top of junction handles
   RenderPendingReaction(ACanvas);
   RenderRubberBand     (ACanvas);
 end;
@@ -1216,12 +2133,19 @@ end;
 // ===========================================================================
 
 procedure TDiagramView.ImportAntimony(const ASource: string);
+var
+  SnapBefore : string;
+  SnapNum    : Integer;
 begin
   CancelCurrentAction;
+  SnapBefore := TakeSnapshot;
+  SnapNum    := FNextSpeciesNum;
   TAntimonyBridge.ImportFromString(ASource, FModel);
   SyncSpeciesNameCounter;
   FModel.ClearSelection;
   FScrollOffset := TPointF.Create(30, 30);
+  FUndoManager.Push(TSnapshotCmd.Create('Import Antimony', FModel,
+    SnapBefore, TakeSnapshot, SnapNum, FNextSpeciesNum, FRestoreProc));
 end;
 
 function TDiagramView.ExportAntimony: string;
@@ -1230,8 +2154,15 @@ begin
 end;
 
 procedure TDiagramView.AutoLayout(Iterations: Integer);
+var
+  SnapBefore : string;
+  SnapNum    : Integer;
 begin
+  SnapBefore := TakeSnapshot;
+  SnapNum    := FNextSpeciesNum;
   TAutoLayout.Run(FModel, Iterations);
+  FUndoManager.Push(TSnapshotCmd.Create('Auto layout', FModel,
+    SnapBefore, TakeSnapshot, SnapNum, FNextSpeciesNum, FRestoreProc));
 end;
 
 function TDiagramView.HasNonDefaultCompartments: Boolean;
@@ -1249,6 +2180,7 @@ begin
   FModel.Clear;
   FNextSpeciesNum := 1;
   FScrollOffset   := TPointF.Create(30, 30);
+  FUndoManager.Clear;
 end;
 
 function TDiagramView.ContentBounds: TRectF;
@@ -1311,6 +2243,7 @@ begin
   SyncSpeciesNameCounter;
   FModel.ClearSelection;
   SetModeSelect;
+  FUndoManager.Clear;
 end;
 
 

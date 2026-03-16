@@ -4,7 +4,7 @@
         <ProjectVersion>20.3</ProjectVersion>
         <FrameworkType>FMX</FrameworkType>
         <Base>True</Base>
-        <Config Condition="'$(Config)'==''">Debug</Config>
+        <Config Condition="'$(Config)'==''">Release</Config>
         <Platform Condition="'$(Platform)'==''">Win64</Platform>
         <ProjectName Condition="'$(ProjectName)'==''">PathwayDesigner_FMX_Project</ProjectName>
         <TargetedPlatforms>135171</TargetedPlatforms>
@@ -132,6 +132,10 @@
     </PropertyGroup>
     <PropertyGroup Condition="'$(Cfg_1_Win64)'!=''">
         <AppDPIAwarenessMode>PerMonitorV2</AppDPIAwarenessMode>
+        <VerInfo_IncludeVerInfo>true</VerInfo_IncludeVerInfo>
+        <VerInfo_Locale>1033</VerInfo_Locale>
+        <PreBuildEvent><![CDATA[cmd /c "call "$(PROJECTDIR)\update_timestamp.bat""
+$(PreBuildEvent)]]></PreBuildEvent>
     </PropertyGroup>
     <PropertyGroup Condition="'$(Cfg_2)'!=''">
         <DCC_LocalDebugSymbols>false</DCC_LocalDebugSymbols>
@@ -157,8 +161,6 @@
         <DCCReference Include="uGeometry.pas"/>
         <DCCReference Include="uDiagramView.pas"/>
         <DCCReference Include="uAntimonyBridge.pas"/>
-        <DCCReference Include="uLibSBNW.pas"/>
-        <DCCReference Include="uSBMLLayout.pas"/>
         <DCCReference Include="uAutoLayout.pas"/>
         <DCCReference Include="AntimonyLibrary\uAntimony.pas"/>
         <DCCReference Include="AntimonyLibrary\uAntimonyExpressionParser.pas"/>
@@ -166,6 +168,9 @@
         <DCCReference Include="AntimonyLibrary\uAntimonyModelType.pas"/>
         <DCCReference Include="AntimonyLibrary\uAntimonyParser.pas"/>
         <DCCReference Include="AntimonyLibrary\uExpressionNode.pas"/>
+        <DCCReference Include="uAppVersion.pas"/>
+        <DCCReference Include="uRandomNetwork.pas"/>
+        <DCCReference Include="uUndoManager.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>
@@ -186,6 +191,10 @@
                 <Source>
                     <Source Name="MainSource">PathwayDesigner_FMX_Project.dpr</Source>
                 </Source>
+                <Excluded_Packages>
+                    <Excluded_Packages Name="$(BDSBIN)\dcloffice2k370.bpl">Microsoft Office 2000 Sample Automation Server Wrapper Components</Excluded_Packages>
+                    <Excluded_Packages Name="$(BDSBIN)\dclofficexp370.bpl">Microsoft Office XP Sample Automation Server Wrapper Components</Excluded_Packages>
+                </Excluded_Packages>
             </Delphi.Personality>
             <Deployment Version="5">
                 <DeployFile LocalName="$(BDS)\Redist\iossimulator\libcgunwind.1.0.dylib" Class="DependencyModule">
@@ -1248,4 +1257,12 @@
     <Import Project="$(BDS)\Bin\CodeGear.Delphi.Targets" Condition="Exists('$(BDS)\Bin\CodeGear.Delphi.Targets')"/>
     <Import Project="$(APPDATA)\Embarcadero\$(BDSAPPDATABASEDIR)\$(PRODUCTVERSION)\UserTools.proj" Condition="Exists('$(APPDATA)\Embarcadero\$(BDSAPPDATABASEDIR)\$(PRODUCTVERSION)\UserTools.proj')"/>
     <Import Project="$(MSBuildProjectName).deployproj" Condition="Exists('$(MSBuildProjectName).deployproj')"/>
+    <PropertyGroup Condition="'$(Config)'=='Debug' And '$(Platform)'=='Win64'">
+        <PreBuildEvent>cmd /c &quot;call &quot;$(PROJECTDIR)\update_timestamp.bat&quot;&quot;</PreBuildEvent>
+        <PreBuildEventIgnoreExitCode>False</PreBuildEventIgnoreExitCode>
+        <PreLinkEvent/>
+        <PreLinkEventIgnoreExitCode>False</PreLinkEventIgnoreExitCode>
+        <PostBuildEvent/>
+        <PostBuildEventIgnoreExitCode>False</PostBuildEventIgnoreExitCode>
+    </PropertyGroup>
 </Project>
