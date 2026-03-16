@@ -10,7 +10,7 @@
    </tr>
 </table>
 
-[![GitHub license](https://img.shields.io)](https://github.com)
+[![License: MIT](https://img.shields.io)](https://opensource.org)
 
 # PathwayDesigner
 
