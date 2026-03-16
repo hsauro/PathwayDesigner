@@ -1,5 +1,5 @@
 
-<table style="width:100%">
+ <table style="width:100%">
   <tr>
     <td><a href="https://badge.fury.io"><img src="https://badge.fury.io.svg" alt="GitHub version" height="18"></a></td>
     <td><img src="https://img.shields.io" alt="License"></td>
@@ -7,6 +7,7 @@
     <td><img alt="Funding" src="https://img.shields.io"></td>
    </tr>
 </table>
+
 
 
 # PathwayDesigner
