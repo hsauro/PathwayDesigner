@@ -3,7 +3,7 @@
 
 ![GitHub package.json version](https://img.shields.io/github/package-json/v/hsauro/PathwayDesigner)
 
-![Static Badge](https://img.shields.io/badge/NIBIB-EB028887)
+![Static Badge](https://img.shields.io/badge/NIBIBEB028887)
 
 
 Funding NIBIB: EB028887
