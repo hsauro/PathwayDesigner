@@ -2,11 +2,6 @@
 ![GitHub License](https://img.shields.io/github/license/hsauro/PathwayDesigner)  ![GitHub package.json version](https://img.shields.io/github/package-json/v/hsauro/PathwayDesigner) ![Static Badge](https://img.shields.io/badge/Funding-NIBIB%20(EB028887)-blue)
 
 
-Funding NIBIB: EB028887
-
-
-
-
 # PathwayDesigner
 
 This is a rewrite of the original PathwayDesigner application. This version will run on Windows and Mac OSX
