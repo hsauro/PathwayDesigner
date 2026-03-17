@@ -2,6 +2,9 @@
 ![GitHub License](https://img.shields.io/github/license/hsauro/PathwayDesigner)
 ![NIBIB(EB028887)](https://img.shields.io)
 
+![Sponsor](https://img.shields.io)
+
+
 
 # PathwayDesigner
 
