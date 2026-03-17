@@ -53,7 +53,7 @@ uses
   uDiagramView,
   uAntimonyBridge,
   uRandomNetwork,
-  uAppVersion;
+  uAppVersion, FMX.Objects;
 
 
 type

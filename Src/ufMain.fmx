@@ -2,7 +2,7 @@ object frmMain: TfrmMain
   Left = 0
   Top = 0
   Caption = 'PathwayDesigner'
-  ClientHeight = 764
+  ClientHeight = 884
   ClientWidth = 1346
   Position = MainFormCenter
   FormFactor.Width = 320
@@ -108,7 +108,7 @@ object frmMain: TfrmMain
   end
   object Layout2: TLayout
     Align = Bottom
-    Position.Y = 714.000000000000000000
+    Position.Y = 834.000000000000000000
     Size.Width = 1346.000000000000000000
     Size.Height = 50.000000000000000000
     Size.PlatformDefault = False
@@ -124,7 +124,7 @@ object frmMain: TfrmMain
     Align = Left
     Position.Y = 40.000000000000000000
     Size.Width = 48.000000000000000000
-    Size.Height = 674.000000000000000000
+    Size.Height = 794.000000000000000000
     Size.PlatformDefault = False
     TabOrder = 2
     object btnSelect: TSpeedButton
@@ -247,7 +247,7 @@ object frmMain: TfrmMain
   object Layout4: TLayout
     Align = Client
     Size.Width = 1298.000000000000000000
-    Size.Height = 674.000000000000000000
+    Size.Height = 794.000000000000000000
     Size.PlatformDefault = False
     TabOrder = 3
     object HScrollBar: TScrollBar
@@ -255,7 +255,7 @@ object frmMain: TfrmMain
       Max = 800.000000000000000000
       SmallChange = 20.000000000000000000
       Orientation = Horizontal
-      Position.Y = 656.000000000000000000
+      Position.Y = 776.000000000000000000
       Size.Width = 1298.000000000000000000
       Size.Height = 18.000000000000000000
       Size.PlatformDefault = False
@@ -269,7 +269,7 @@ object frmMain: TfrmMain
       Orientation = Vertical
       Position.X = 1280.000000000000000000
       Size.Width = 18.000000000000000000
-      Size.Height = 656.000000000000000000
+      Size.Height = 776.000000000000000000
       Size.PlatformDefault = False
       TabOrder = 1
       OnChange = VScrollBarChange
@@ -278,7 +278,7 @@ object frmMain: TfrmMain
       Align = Client
       HitTest = True
       Size.Width = 1280.000000000000000000
-      Size.Height = 656.000000000000000000
+      Size.Height = 776.000000000000000000
       Size.PlatformDefault = False
       OnDblClick = PaintBoxDblClick
       OnMouseDown = PaintBoxMouseDown

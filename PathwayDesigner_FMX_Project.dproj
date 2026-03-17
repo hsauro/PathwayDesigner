@@ -153,24 +153,24 @@ $(PreBuildEvent)]]></PreBuildEvent>
         <DelphiCompile Include="$(MainSource)">
             <MainSource>MainSource</MainSource>
         </DelphiCompile>
-        <DCCReference Include="ufMain.pas">
-            <Form>frmMain</Form>
-            <FormType>fmx</FormType>
-        </DCCReference>
-        <DCCReference Include="uBioModel.pas"/>
-        <DCCReference Include="uGeometry.pas"/>
-        <DCCReference Include="uDiagramView.pas"/>
-        <DCCReference Include="uAntimonyBridge.pas"/>
-        <DCCReference Include="uAutoLayout.pas"/>
         <DCCReference Include="AntimonyLibrary\uAntimony.pas"/>
         <DCCReference Include="AntimonyLibrary\uAntimonyExpressionParser.pas"/>
         <DCCReference Include="AntimonyLibrary\uAntimonyLexer.pas"/>
         <DCCReference Include="AntimonyLibrary\uAntimonyModelType.pas"/>
         <DCCReference Include="AntimonyLibrary\uAntimonyParser.pas"/>
         <DCCReference Include="AntimonyLibrary\uExpressionNode.pas"/>
-        <DCCReference Include="uAppVersion.pas"/>
-        <DCCReference Include="uRandomNetwork.pas"/>
-        <DCCReference Include="uUndoManager.pas"/>
+        <DCCReference Include="Src\uAntimonyBridge.pas"/>
+        <DCCReference Include="Src\uAppVersion.pas"/>
+        <DCCReference Include="Src\uAutoLayout.pas"/>
+        <DCCReference Include="Src\uBioModel.pas"/>
+        <DCCReference Include="Src\uDiagramView.pas"/>
+        <DCCReference Include="Src\ufMain.pas">
+            <Form>frmMain</Form>
+            <FormType>fmx</FormType>
+        </DCCReference>
+        <DCCReference Include="Src\uGeometry.pas"/>
+        <DCCReference Include="Src\uRandomNetwork.pas"/>
+        <DCCReference Include="Src\uUndoManager.pas"/>
         <BuildConfiguration Include="Base">
             <Key>Base</Key>
         </BuildConfiguration>
@@ -288,9 +288,9 @@ $(PreBuildEvent)]]></PreBuildEvent>
                         <Overwrite>true</Overwrite>
                     </Platform>
                 </DeployFile>
-                <DeployFile LocalName="Win64\Debug\PathwayDesigner_FMX_Project.rsm" Configuration="Debug" Class="DebugSymbols">
+                <DeployFile LocalName="Win64\Release\PathwayDesigner_FMX_Project.exe" Configuration="Release" Class="ProjectOutput">
                     <Platform Name="Win64">
-                        <RemoteName>PathwayDesigner_FMX_Project.rsm</RemoteName>
+                        <RemoteName>PathwayDesigner_FMX_Project.exe</RemoteName>
                         <Overwrite>true</Overwrite>
                     </Platform>
                 </DeployFile>

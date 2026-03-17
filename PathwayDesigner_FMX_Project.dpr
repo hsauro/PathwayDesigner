@@ -4,21 +4,21 @@ uses
   System.StartUpCopy,
   FMX.Forms,
   FMX.Skia,
-  ufMain in 'ufMain.pas' {frmMain},
-  uBioModel in 'uBioModel.pas',
-  uGeometry in 'uGeometry.pas',
-  uDiagramView in 'uDiagramView.pas',
-  uAntimonyBridge in 'uAntimonyBridge.pas',
-  uAutoLayout in 'uAutoLayout.pas',
   uAntimony in 'AntimonyLibrary\uAntimony.pas',
   uAntimonyExpressionParser in 'AntimonyLibrary\uAntimonyExpressionParser.pas',
   uAntimonyLexer in 'AntimonyLibrary\uAntimonyLexer.pas',
   uAntimonyModelType in 'AntimonyLibrary\uAntimonyModelType.pas',
   uAntimonyParser in 'AntimonyLibrary\uAntimonyParser.pas',
   uExpressionNode in 'AntimonyLibrary\uExpressionNode.pas',
-  uAppVersion in 'uAppVersion.pas',
-  uRandomNetwork in 'uRandomNetwork.pas',
-  uUndoManager in 'uUndoManager.pas';
+  uAntimonyBridge in 'Src\uAntimonyBridge.pas',
+  uAppVersion in 'Src\uAppVersion.pas',
+  uAutoLayout in 'Src\uAutoLayout.pas',
+  uBioModel in 'Src\uBioModel.pas',
+  uDiagramView in 'Src\uDiagramView.pas',
+  ufMain in 'Src\ufMain.pas' {frmMain},
+  uGeometry in 'Src\uGeometry.pas',
+  uRandomNetwork in 'Src\uRandomNetwork.pas',
+  uUndoManager in 'Src\uUndoManager.pas';
 
 {$R *.res}
 
