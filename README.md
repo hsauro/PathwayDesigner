@@ -27,11 +27,16 @@ This version supports:
 -  Save and load to a json format that can store visualization information
 -  Autolayout, useful for model imported from Antimony
 
+### Version 0.1.1
+
+This version adds:
+
+- Undo/redo
+- Much better control over bezier curves
+
 ### Not yet supported
 
-- Undo/redo, coming in  next version
 - Import/Export of SBML (without layout/render info)
-- Better Bezier reaction control
 - Printing of networks to png and pdf
 - Add modifier edges between species and reaction
 - Ability to set colors etc of species nodes and reactions
