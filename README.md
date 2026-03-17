@@ -27,7 +27,7 @@ This version supports:
 -  Save and load to a json format that can store visualization information
 -  Autolayout, useful for model imported from Antimony
 
-### Note yet supported
+### Not yet supported
 
 - Undo/redo, coming in  next version
 - Import/Export of SBML (without layout/render info)
