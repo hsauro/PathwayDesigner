@@ -22,7 +22,7 @@ This version supports:
 -  Adding and deleting reactions
 -  Zoom and pan
 -  Creating alias species
--  Select straigth line or Bezier curves (basic support so far)
+-  Select straight line or Bezier curves (basic support so far)
 -  Import/Export a subset of Antimony syntax
 -  Save and load to a json format that can store visualization information
 -  Autolayout, useful for model imported from Antimony
@@ -42,7 +42,7 @@ This version supports:
 - Alignment tools
 - Cicularlize a set of nodes
 - And more
-- 
+  
 ## Contributing
 
 Bug reports and feature requests are welcome! 
