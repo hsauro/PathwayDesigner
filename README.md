@@ -1,7 +1,5 @@
 
-![GitHub License](https://img.shields.io/github/license/hsauro/PathwayDesigner)
-
-![GitHub package.json version](https://img.shields.io/github/package-json/v/hsauro/PathwayDesigner)
+![GitHub License](https://img.shields.io/github/license/hsauro/PathwayDesigner)  ![GitHub package.json version](https://img.shields.io/github/package-json/v/hsauro/PathwayDesigner)
 
 ![Static Badge](https://img.shields.io/badge/Funding-NIBIB%20(EB028887)-blue)
 
