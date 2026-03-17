@@ -47,6 +47,12 @@ This version supports:
 
 Bug reports and feature requests are welcome! 
 
+## Screenshots
+
+v0.1.1
+
+<img width="895" height="838" alt="image" src="https://github.com/user-attachments/assets/e5d47dd4-4524-4d7a-81ac-5e92438bb6d3" />
+
 ## License
 
 MIT License
