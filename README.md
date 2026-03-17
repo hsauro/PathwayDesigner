@@ -12,8 +12,37 @@ PathwayDesigner is a GUI tool for drawing and editing biochemical networks. Visu
 
 ## Getting Started
 
-There is no binary release yet, but windows releases will be made shortly. Mac binaries (DMG files) will be made if there are requests.
+An initial binary release is available in the releases section, version 0.1.0 for windows only. Mac binaries (DMG files) will be made if there are requests.
 
+## Vession 0.1.0
+
+This version supports:
+
+-  Adding, deleting and moving species nodes
+-  Adding and deleting reactions
+-  Zoom and pan
+-  Creating alias species
+-  Select straigth line or Bezier curves (basic support so far)
+-  Import/Export a subset of Antimony syntax
+-  Save and load to a json format that can store visualization information
+-  Autolayout, useful for model imported from Antimony
+
+### Note yet supported
+
+- Undo/redo, coming in  next version
+- Import/Export of SBML (without layout/render info)
+- Better Bezier reaction control
+- Printing of networks to png and pdf
+- Add modifier edges between species and reaction
+- Ability to set colors etc of species nodes and reactions
+- Set font sizes for species names
+- Select different species node shapes
+- Positioning of species labels
+- Styling, such as Echer style
+- Alignment tools
+- Cicularlize a set of nodes
+- And more
+- 
 ## Contributing
 
 Bug reports and feature requests are welcome! 
