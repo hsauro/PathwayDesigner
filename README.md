@@ -1,7 +1,7 @@
 
 ![GitHub License](https://img.shields.io/github/license/hsauro/PathwayDesigner)
 
-![Static Badge](https://img.shields.io/badge/EB028887)
+Funding NIBIB: EB028887
 
 
 
