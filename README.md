@@ -1,6 +1,9 @@
 
 ![GitHub License](https://img.shields.io/github/license/hsauro/PathwayDesigner)
 
+![GitHub package.json version](https://img.shields.io/github/package-json/v/hsauro/PathwayDesigner)
+
+
 Funding NIBIB: EB028887
 
 
