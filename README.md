@@ -1,6 +1,5 @@
 
-[<img src="https://img.shields.io" alt="License">](https://img.shields.io/github/license/hsauro/PathwayDesigner
-)
+![GitHub License](https://img.shields.io/github/license/hsauro/PathwayDesigner)
 
 
 # PathwayDesigner
