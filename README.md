@@ -1,14 +1,5 @@
-<table style="width:100%">
-  <tr>
-    <td><a href="https://badge.fury.io"><img src="https://badge.fury.io.svg" alt="GitHub version" height="18"></a></td>
-    <td><img src="https://img.shields.io" alt="License"></td>
-    <td><img src="https://img.shields.io" alt="Funding"></td>
-    <td><img src="https://img.shields.io" alt="Funding"></td>
-   </tr>
-</table>
 
-
-
+<img src="https://img.shields.io" alt="License">
 
 
 # PathwayDesigner
