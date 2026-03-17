@@ -37,7 +37,10 @@ uses
 const
   VIEW_NODE_CORNER     = 8.0;
   VIEW_JUNCTION_RADIUS = 5.0;
-  VIEW_PRODUCT_GAP     = 6.0;
+  VIEW_PRODUCT_GAP         = 6.0;  // world px gap, straight/linear product legs
+  VIEW_BEZIER_PRODUCT_GAP  = 6.0;  // world px gap, Bézier product legs
+  VIEW_REACTANT_GAP        = 6.0;  // world px gap, straight/linear reactant legs
+  VIEW_BEZIER_REACTANT_GAP = 6.0;  // world px gap, Bézier reactant legs
   VIEW_ARROW_LEN       = 12.0;
   VIEW_ARROW_HALF_BASE = 5.0;
   VIEW_LINE_WIDTH      = 1.5;
@@ -69,6 +72,7 @@ type
     FZoom               : Single;
     FShowAliasIndicator : Boolean;
     FDefaultBezier      : Boolean;   // new reactions default to Bézier
+    FDefaultSmoothJunction : Boolean; // new reactions default to smooth junction
 
     FState       : TInteractionState;
     FMouseWorld  : TPointF;
@@ -91,6 +95,16 @@ type
     FDragCtrlPtIsReactant: Boolean;
     FDragCtrlPtPartIdx   : Integer;
     FDragCtrlPtOldState  : TCtrlPtState; // ctrl pt state before materialising
+
+    // Per-drag cached values for smooth-junction logic
+    FDragCtrlPtIsInner    : Boolean;   // current ctrl-pt drag is an inner (junction-side) handle
+    FDragCtrlPtReaction   : TReaction; // reaction that owns the dragged ctrl pt (cached)
+    FDragCtrlPtSnapBefore : string;    // pre-drag snapshot (smooth inner drag only)
+    FDragCtrlPtSnapNum    : Integer;
+    FDragJunctionSmooth        : Boolean; // reaction.IsJunctionSmooth captured at junction drag-start
+    FDragJunctionSmoothSnap    : string;  // pre-drag snapshot (smooth junction drag only)
+    FDragJunctionSmoothSnapNum : Integer;
+
     // Undo manager
     FUndoManager         : TUndoManager;
     FRestoreProc         : TAfterRestoreProc;  // cached; created once in constructor
@@ -202,6 +216,19 @@ type
                                   out AIndex: Integer): Boolean;
     procedure ClearTransientState;
 
+    // Enforce collinear inner handles through the junction (smooth-junction mode).
+    procedure ApplySmoothJunction;
+
+    // Compute the smooth axis unit vector for reaction R (CentR → CentP direction).
+    // Used by MaterialiseSmoothCtrlPts.
+    procedure ComputeSmoothAxis(R: TReaction; out AAxisX, AAxisY: Single);
+
+    // Materialise all ctrl pts for R with collinear inner handles along the
+    // smooth axis at the current junction position.  Does NOT move the junction
+    // or change IsBezier/IsLinear.  Called when toggling smooth mode ON and
+    // from NiceBezierForReaction's smooth branch.
+    procedure MaterialiseSmoothCtrlPts(R: TReaction);
+
   public
     constructor Create(AModel: TBioModel; AOwnsModel: Boolean = False);
     destructor  Destroy; override;
@@ -251,7 +278,8 @@ type
     property Zoom               : Single             read FZoom               write FZoom;
     property State              : TInteractionState  read FState;
     property ShowAliasIndicator : Boolean            read FShowAliasIndicator write FShowAliasIndicator;
-    property DefaultBezier      : Boolean            read FDefaultBezier      write FDefaultBezier;
+    property DefaultBezier         : Boolean read FDefaultBezier         write FDefaultBezier;
+    property DefaultSmoothJunction : Boolean read FDefaultSmoothJunction write FDefaultSmoothJunction;
 
     // Undo / Redo
     procedure Undo;
@@ -273,6 +301,21 @@ type
     // reactions.  Junction is repositioned at the species midpoint for
     // UniUni reactions so the handle appears in a sensible place.
     procedure SetStraightSelected;
+
+    // Toggle IsJunctionSmooth on all selected Bézier reactions.
+    // Non-Bézier reactions are silently skipped.
+    // Each reaction is toggled independently so a mixed selection gets flipped.
+    procedure ToggleJunctionSmoothSelected;
+
+    // Returns the first currently selected reaction, or nil if none are selected.
+    // Convenient for menu handlers that operate on the selection.
+    function SelectedReaction: TReaction;
+
+    // Reset all Bézier control points on the given reaction and reposition the
+    // junction at the natural centroid midpoint so the curves look clean.
+    // The reaction is set to Bézier mode if it is not already.
+    // AReactionId is the reaction's Id string (R.Id).
+    procedure NiceBezierForReaction(const AReactionId: string);
 
     // Select all species and reactions.
     procedure SelectAll;
@@ -305,9 +348,10 @@ const
   CLR_RUBBER_BORDER : TAlphaColor = $FF0066CC;
 
   // Bézier control point handles
-  CLR_CTRL_FILL     : TAlphaColor = $FFFFFFFF;   // white fill
-  CLR_CTRL_BORDER   : TAlphaColor = $FF888800;   // dark yellow
-  CLR_CTRL_LINE     : TAlphaColor = $FFAAAAAA;   // grey guide line to endpoint
+  CLR_CTRL_FILL         : TAlphaColor = $FFFFFFFF;   // white fill
+  CLR_CTRL_BORDER       : TAlphaColor = $FF888800;   // dark yellow
+  CLR_CTRL_LINE         : TAlphaColor = $FFAAAAAA;   // grey guide line to endpoint
+  CLR_CTRL_INNER_SMOOTH : TAlphaColor = $FF009999;   // teal — inner handle, smooth mode on
 
   VIEW_CTRL_RADIUS  = 4.0;   // world px, handle circle radius
   VIEW_CTRL_HIT     = 8.0;   // screen px, hit tolerance
@@ -326,10 +370,16 @@ begin
   FState              := isSelect;
   FShowAliasIndicator := True;
   FDefaultBezier      := False;
+  FDefaultSmoothJunction := False;
   FDraggedParticipant  := nil;
   FDraggedCtrlNum      := 0;
   FDragCtrlPtPartIdx   := -1;
   FDragCtrlPtIsReactant:= False;
+  FDragCtrlPtIsInner   := False;
+  FDragCtrlPtReaction  := nil;
+  FDragCtrlPtSnapNum   := 0;
+  FDragJunctionSmooth        := False;
+  FDragJunctionSmoothSnapNum := 0;
   FNextSpeciesNum      := 1;
   FPendingReactants    := TList<TSpeciesNode>.Create;
   FPendingProducts     := TList<TSpeciesNode>.Create;
@@ -791,13 +841,22 @@ begin
 
   R.KineticLaw := RateLaw;
 
-  // When DefaultBezier is on, every new reaction (including UniUni) is Bezier.
+  // When DefaultBezier is on, every new reaction (including UniUni) is Bézier.
   // Otherwise UniUni defaults to a collinear straight line.
   if FDefaultBezier then
     R.IsBezier := True
   else if (R.Reactants.Count = 1) and (R.Products.Count = 1) then
     R.IsLinear := True;
   // else: straight multi-participant -- IsLinear and IsBezier both False
+
+  // When DefaultSmoothJunction is on, new Bézier reactions get smooth junctions
+  // with ctrl pts materialised immediately so the layout is correct from the start.
+  // Silently skipped if the reaction ended up in linear or straight mode.
+  if FDefaultSmoothJunction and R.IsBezier then
+  begin
+    R.IsJunctionSmooth := True;
+    MaterialiseSmoothCtrlPts(R);
+  end;
 
   // Add the rate constant as a parameter with a default value of 0.1
   // only if a parameter with this name does not already exist.
@@ -976,6 +1035,22 @@ begin
                             FDragCtrlPtReactionId,
                             FDragCtrlPtIsReactant,
                             FDragCtrlPtPartIdx);
+        // Cache the owning reaction so MouseMove can check IsJunctionSmooth cheaply.
+        FDragCtrlPtReaction := FModel.FindReactionById(FDragCtrlPtReactionId);
+        // Determine whether this handle is the inner (junction-side) one:
+        //   Reactant leg: inner = Ctrl2 (num 2);  Product leg: inner = Ctrl1 (num 1).
+        FDragCtrlPtIsInner :=
+          ((FDraggedCtrlNum = 2) and  FDragCtrlPtIsReactant) or
+          ((FDraggedCtrlNum = 1) and (not FDragCtrlPtIsReactant));
+        // If this reaction uses smooth junctions and we are grabbing an inner
+        // handle, capture a full model snapshot BEFORE materialisation so that
+        // undo covers every participant the constraint will touch.
+        if Assigned(FDragCtrlPtReaction) and
+           FDragCtrlPtReaction.IsJunctionSmooth and FDragCtrlPtIsInner then
+        begin
+          FDragCtrlPtSnapBefore := TakeSnapshot;
+          FDragCtrlPtSnapNum    := FNextSpeciesNum;
+        end;
         // Materialise both ctrl pts from auto values so the undragged handle
         // is never left at (0,0).
         if not FDraggedParticipant.CtrlPtsSet then
@@ -993,7 +1068,15 @@ begin
         FDraggedJunction      := HitReaction;
         FDragJunctionOldPos   := HitReaction.JunctionPos;  // for undo
         FDragAnchorWorld      := WorldPt;
-        FState                := isDraggingJunction;
+        // Capture whether this reaction uses smooth junctions at drag-start so
+        // a mid-drag mode toggle cannot create inconsistent undo state.
+        FDragJunctionSmooth := HitReaction.IsJunctionSmooth;
+        if FDragJunctionSmooth then
+        begin
+          FDragJunctionSmoothSnap    := TakeSnapshot;
+          FDragJunctionSmoothSnapNum := FNextSpeciesNum;
+        end;
+        FState := isDraggingJunction;
       end
       else if HitTestSpecies(WorldPt, HitSpecies) then
       begin
@@ -1049,7 +1132,26 @@ begin
       ApplyDragDelta(TPointF.Create(
         WorldPt.X - FDragAnchorWorld.X, WorldPt.Y - FDragAnchorWorld.Y));
     isDraggingJunction:
+    begin
+      // When smooth mode is on, every materialised inner handle must translate
+      // by exactly the same delta as the junction so that their world-space
+      // offset from J stays constant — preserving collinearity.
+      // Compute delta BEFORE updating JunctionPos.
+      if FDragJunctionSmooth then
+      begin
+        var DX := WorldPt.X - FDraggedJunction.JunctionPos.X;
+        var DY := WorldPt.Y - FDraggedJunction.JunctionPos.Y;
+        var R  := FDraggedJunction;
+        var P  : TParticipant;
+        for P in R.Reactants do
+          if P.CtrlPtsSet then   // Ctrl2 is the inner (junction-side) handle
+            P.Ctrl2 := TPointF.Create(P.Ctrl2.X + DX, P.Ctrl2.Y + DY);
+        for P in R.Products do
+          if P.CtrlPtsSet then   // Ctrl1 is the inner (junction-side) handle
+            P.Ctrl1 := TPointF.Create(P.Ctrl1.X + DX, P.Ctrl1.Y + DY);
+      end;
       FDraggedJunction.JunctionPos := WorldPt;
+    end;
     isDraggingCtrlPt:
     begin
       // Move the dragged control point to the world position and mark as set.
@@ -1058,6 +1160,12 @@ begin
       else
         FDraggedParticipant.Ctrl2 := WorldPt;
       FDraggedParticipant.CtrlPtsSet := True;
+      // When this reaction uses smooth junctions and we are dragging an inner
+      // handle, enforce collinearity across all inner handles of this reaction.
+      if FDragCtrlPtIsInner and
+         Assigned(FDragCtrlPtReaction) and
+         FDragCtrlPtReaction.IsJunctionSmooth then
+        ApplySmoothJunction;
     end;
     isRubberBand:
       FRubberCurScr := ScreenPt;
@@ -1116,9 +1224,17 @@ begin
     begin
       if (FDragJunctionOldPos.X <> FDraggedJunction.JunctionPos.X) or
          (FDragJunctionOldPos.Y <> FDraggedJunction.JunctionPos.Y) then
-        FUndoManager.Push(TMoveJunctionCmd.Create(FModel,
-          FDraggedJunction.Id,
-          FDragJunctionOldPos, FDraggedJunction.JunctionPos));
+      begin
+        if FDragJunctionSmooth then
+          // Smooth mode moved inner handles too — only a snapshot covers all changes.
+          FUndoManager.Push(TSnapshotCmd.Create('Move junction', FModel,
+            FDragJunctionSmoothSnap, TakeSnapshot,
+            FDragJunctionSmoothSnapNum, FNextSpeciesNum, FRestoreProc))
+        else
+          FUndoManager.Push(TMoveJunctionCmd.Create(FModel,
+            FDraggedJunction.Id,
+            FDragJunctionOldPos, FDraggedJunction.JunctionPos));
+      end;
       FState := isSelect;
     end;
 
@@ -1126,18 +1242,33 @@ begin
     begin
       if Assigned(FDraggedParticipant) then
       begin
-        NewState.Ctrl1      := FDraggedParticipant.Ctrl1;
-        NewState.Ctrl2      := FDraggedParticipant.Ctrl2;
-        NewState.CtrlPtsSet := FDraggedParticipant.CtrlPtsSet;
-        // Only push if something actually changed.
-        if (NewState.Ctrl1.X      <> FDragCtrlPtOldState.Ctrl1.X) or
-           (NewState.Ctrl1.Y      <> FDragCtrlPtOldState.Ctrl1.Y) or
-           (NewState.Ctrl2.X      <> FDragCtrlPtOldState.Ctrl2.X) or
-           (NewState.Ctrl2.Y      <> FDragCtrlPtOldState.Ctrl2.Y) or
-           (NewState.CtrlPtsSet   <> FDragCtrlPtOldState.CtrlPtsSet) then
-          FUndoManager.Push(TDragCtrlPtCmd.Create(FModel,
-            FDragCtrlPtReactionId, FDragCtrlPtIsReactant, FDragCtrlPtPartIdx,
-            FDragCtrlPtOldState, NewState));
+        if FDragCtrlPtIsInner and
+           Assigned(FDragCtrlPtReaction) and
+           FDragCtrlPtReaction.IsJunctionSmooth then
+        begin
+          // Smooth mode may have updated several participants — snapshot undo.
+          var SnapAfter := TakeSnapshot;
+          if SnapAfter <> FDragCtrlPtSnapBefore then
+            FUndoManager.Push(TSnapshotCmd.Create('Move control point', FModel,
+              FDragCtrlPtSnapBefore, SnapAfter,
+              FDragCtrlPtSnapNum, FNextSpeciesNum, FRestoreProc));
+        end
+        else
+        begin
+          // Standard mode: only the dragged participant changed.
+          NewState.Ctrl1      := FDraggedParticipant.Ctrl1;
+          NewState.Ctrl2      := FDraggedParticipant.Ctrl2;
+          NewState.CtrlPtsSet := FDraggedParticipant.CtrlPtsSet;
+          // Only push if something actually changed.
+          if (NewState.Ctrl1.X    <> FDragCtrlPtOldState.Ctrl1.X) or
+             (NewState.Ctrl1.Y    <> FDragCtrlPtOldState.Ctrl1.Y) or
+             (NewState.Ctrl2.X    <> FDragCtrlPtOldState.Ctrl2.X) or
+             (NewState.Ctrl2.Y    <> FDragCtrlPtOldState.Ctrl2.Y) or
+             (NewState.CtrlPtsSet <> FDragCtrlPtOldState.CtrlPtsSet) then
+            FUndoManager.Push(TDragCtrlPtCmd.Create(FModel,
+              FDragCtrlPtReactionId, FDragCtrlPtIsReactant, FDragCtrlPtPartIdx,
+              FDragCtrlPtOldState, NewState));
+        end;
       end;
       FState := isSelect;
     end;
@@ -1192,7 +1323,8 @@ begin
   SnapNum    := FNextSpeciesNum;
 
   for R in FModel.Reactions do
-    if R.Selected and (R.Reactants.Count = 1) and (R.Products.Count = 1) then
+    begin
+    //if R.Selected and (R.Reactants.Count = 1) and (R.Products.Count = 1) then
     begin
       R.IsLinear := not R.IsLinear;
 
@@ -1210,6 +1342,7 @@ begin
         R.JunctionPos := TPointF.Create(
           (A.X + B.X) * 0.5, (A.Y + B.Y) * 0.5);
       end;
+    end;
     end;
 
   FUndoManager.Push(TSnapshotCmd.Create('Toggle linear', FModel,
@@ -1260,6 +1393,149 @@ begin
       end;
     end;
   FUndoManager.Push(TSnapshotCmd.Create('Set straight', FModel,
+    SnapBefore, TakeSnapshot, SnapNum, FNextSpeciesNum, FRestoreProc));
+end;
+
+// ---------------------------------------------------------------------------
+
+procedure TDiagramView.ToggleJunctionSmoothSelected;
+// Toggle IsJunctionSmooth on every selected Bézier reaction independently.
+// Non-Bézier reactions are silently skipped.
+// When turning smooth ON, all ctrl pts are immediately materialised with
+// collinear inner handles so the user sees the correct layout right away.
+var
+  R          : TReaction;
+  SnapBefore : string;
+  SnapNum    : Integer;
+  AnyChanged : Boolean;
+begin
+  AnyChanged := False;
+  for R in FModel.Reactions do
+    if R.Selected and R.IsBezier then
+    begin
+      AnyChanged := True; Break;
+    end;
+  if not AnyChanged then Exit;
+
+  SnapBefore := TakeSnapshot;
+  SnapNum    := FNextSpeciesNum;
+  for R in FModel.Reactions do
+    if R.Selected and R.IsBezier then
+    begin
+      R.IsJunctionSmooth := not R.IsJunctionSmooth;
+      // When turning smooth ON, materialise all ctrl pts collinearly at once
+      // so handles are in the correct position immediately — not deferred to
+      // the next drag.
+      if R.IsJunctionSmooth then
+        MaterialiseSmoothCtrlPts(R);
+    end;
+
+  FUndoManager.Push(TSnapshotCmd.Create('Toggle smooth junction', FModel,
+    SnapBefore, TakeSnapshot, SnapNum, FNextSpeciesNum, FRestoreProc));
+end;
+
+// ---------------------------------------------------------------------------
+
+function TDiagramView.SelectedReaction: TReaction;
+// Return the first selected reaction, or nil.
+var
+  R : TReaction;
+begin
+  Result := nil;
+  for R in FModel.Reactions do
+    if R.Selected then begin Result := R; Exit; end;
+end;
+
+// ---------------------------------------------------------------------------
+
+procedure TDiagramView.NiceBezierForReaction(const AReactionId: string);
+// Produce a clean Bézier layout for the named reaction.
+//
+// The method is aware of IsJunctionSmooth and behaves differently in each case:
+//
+// Non-smooth (IsJunctionSmooth=False):
+//   • Clears all ctrl pts (CtrlPtsSet := False) so ComputeAutoCtrlPts takes
+//     over at render time — the standard fan-spread layout that self-adapts
+//     when species are later moved.
+//
+// Smooth (IsJunctionSmooth=True):
+//   • Explicitly materialises ALL ctrl pts (CtrlPtsSet := True) with
+//     collinear inner handles from the outset so the user immediately sees
+//     the correct smooth layout without needing to drag.
+//
+//   The inner (junction-side) handle of every leg is placed along the
+//   "smooth axis" — the unit vector from the reactant centroid to the
+//   product centroid through the junction.  Distance from the junction is
+//   proportional to the individual leg length so curves scale naturally
+//   for asymmetric networks.
+//
+//   The outer (species-side) handle uses the standard 35%-along-leg formula
+//   with no fan offset so curves leave/arrive at each species node cleanly.
+//
+// In both cases:
+//   • Junction is placed at the midpoint of (reactant centroid, product centroid).
+//   • IsLinear is cleared; IsBezier is set.
+//   • The change is fully undoable.
+const
+  CTRL_FRAC = 0.35;
+var
+  R          : TReaction;
+  P          : TParticipant;
+  SumRX, SumRY : Single;
+  SumPX, SumPY : Single;
+  CentR, CentP : TPointF;
+  JPos         : TPointF;
+  SnapBefore   : string;
+  SnapNum      : Integer;
+begin
+  R := FModel.FindReactionById(AReactionId);
+  if not Assigned(R) then Exit;
+
+  SnapBefore := TakeSnapshot;
+  SnapNum    := FNextSpeciesNum;
+
+  // --- Ensure Bézier mode ---
+  R.IsLinear := False;
+  R.IsBezier := True;
+
+  // --- Compute centroids ---
+  SumRX := 0; SumRY := 0;
+  for P in R.Reactants do
+  begin
+    SumRX := SumRX + P.Species.Center.X;
+    SumRY := SumRY + P.Species.Center.Y;
+  end;
+  if R.Reactants.Count > 0 then
+    CentR := TPointF.Create(SumRX / R.Reactants.Count, SumRY / R.Reactants.Count)
+  else
+    CentR := R.JunctionPos;
+
+  SumPX := 0; SumPY := 0;
+  for P in R.Products do
+  begin
+    SumPX := SumPX + P.Species.Center.X;
+    SumPY := SumPY + P.Species.Center.Y;
+  end;
+  if R.Products.Count > 0 then
+    CentP := TPointF.Create(SumPX / R.Products.Count, SumPY / R.Products.Count)
+  else
+    CentP := CentR;
+
+  // --- Place junction at centroid midpoint ---
+  JPos := TPointF.Create((CentR.X + CentP.X) * 0.5, (CentR.Y + CentP.Y) * 0.5);
+  R.JunctionPos := JPos;
+
+  // --- Non-smooth: reset to auto so ComputeAutoCtrlPts drives everything ---
+  if not R.IsJunctionSmooth then
+  begin
+    for P in R.Reactants do P.ResetCtrlPts;
+    for P in R.Products  do P.ResetCtrlPts;
+  end
+  else
+    // --- Smooth: materialise collinear inner handles along the smooth axis ---
+    MaterialiseSmoothCtrlPts(R);
+
+  FUndoManager.Push(TSnapshotCmd.Create('Nice Bézier', FModel,
     SnapBefore, TakeSnapshot, SnapNum, FNextSpeciesNum, FRestoreProc));
 end;
 
@@ -1394,6 +1670,189 @@ begin
   else
     ComputeAutoCtrlPts(AStart, AEnd, AFanIndex, AFanTotal, AJunctionAtEnd, ACtrl1, ACtrl2);
 end;
+
+// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+
+procedure TDiagramView.ComputeSmoothAxis(R: TReaction;
+                                          out AAxisX, AAxisY: Single);
+// Returns the unit vector from the centroid of reactants to the centroid of
+// products — the line along which all inner handles must lie.
+var
+  P              : TParticipant;
+  SumRX, SumRY   : Single;
+  SumPX, SumPY   : Single;
+  CentR, CentP   : TPointF;
+  Len            : Single;
+begin
+  SumRX := 0; SumRY := 0;
+  for P in R.Reactants do
+  begin SumRX := SumRX + P.Species.Center.X; SumRY := SumRY + P.Species.Center.Y; end;
+  if R.Reactants.Count > 0 then
+    CentR := TPointF.Create(SumRX / R.Reactants.Count, SumRY / R.Reactants.Count)
+  else
+    CentR := R.JunctionPos;
+
+  SumPX := 0; SumPY := 0;
+  for P in R.Products do
+  begin SumPX := SumPX + P.Species.Center.X; SumPY := SumPY + P.Species.Center.Y; end;
+  if R.Products.Count > 0 then
+    CentP := TPointF.Create(SumPX / R.Products.Count, SumPY / R.Products.Count)
+  else
+    CentP := CentR;
+
+  AAxisX := CentP.X - CentR.X;
+  AAxisY := CentP.Y - CentR.Y;
+  Len    := Sqrt(AAxisX * AAxisX + AAxisY * AAxisY);
+  if Len > 0.5 then begin AAxisX := AAxisX / Len; AAxisY := AAxisY / Len; end
+  else               begin AAxisX := 1.0;          AAxisY := 0.0; end;
+end;
+
+// ---------------------------------------------------------------------------
+
+procedure TDiagramView.MaterialiseSmoothCtrlPts(R: TReaction);
+// Explicitly set Ctrl1/Ctrl2 for every participant so that all inner handles
+// lie on the smooth axis through the junction.
+//
+//   Reactant inner = Ctrl2 → J − axis × legLen × CTRL_FRAC  (reactant side)
+//   Product  inner = Ctrl1 → J + axis × legLen × CTRL_FRAC  (product side)
+//   Outer handles  → 35% along leg from species, no fan offset.
+//
+// Does NOT move the junction or change IsBezier/IsLinear.
+const
+  CTRL_FRAC = 0.35;
+var
+  AxisX, AxisY   : Single;
+  JPos           : TPointF;
+  P              : TParticipant;
+  LegDX, LegDY  : Single;
+  LegLen         : Single;
+  LegUX, LegUY  : Single;
+  C1, C2         : TPointF;
+  i              : Integer;
+begin
+  ComputeSmoothAxis(R, AxisX, AxisY);
+  JPos := R.JunctionPos;
+
+  for i := 0 to R.Reactants.Count - 1 do
+  begin
+    P      := R.Reactants[i];
+    LegDX  := JPos.X - P.Species.Center.X;
+    LegDY  := JPos.Y - P.Species.Center.Y;
+    LegLen := Sqrt(LegDX * LegDX + LegDY * LegDY);
+    if LegLen < 1.0 then begin P.ResetCtrlPts; Continue; end;
+    LegUX  := LegDX / LegLen; LegUY := LegDY / LegLen;
+    C1.X := P.Species.Center.X + LegUX * LegLen * CTRL_FRAC; // outer
+    C1.Y := P.Species.Center.Y + LegUY * LegLen * CTRL_FRAC;
+    C2.X := JPos.X - AxisX * LegLen * CTRL_FRAC;              // inner (−axis)
+    C2.Y := JPos.Y - AxisY * LegLen * CTRL_FRAC;
+    P.Ctrl1 := C1; P.Ctrl2 := C2; P.CtrlPtsSet := True;
+  end;
+
+  for i := 0 to R.Products.Count - 1 do
+  begin
+    P      := R.Products[i];
+    LegDX  := P.Species.Center.X - JPos.X;
+    LegDY  := P.Species.Center.Y - JPos.Y;
+    LegLen := Sqrt(LegDX * LegDX + LegDY * LegDY);
+    if LegLen < 1.0 then begin P.ResetCtrlPts; Continue; end;
+    LegUX  := LegDX / LegLen; LegUY := LegDY / LegLen;
+    C1.X := JPos.X + AxisX * LegLen * CTRL_FRAC;              // inner (+axis)
+    C1.Y := JPos.Y + AxisY * LegLen * CTRL_FRAC;
+    C2.X := P.Species.Center.X - LegUX * LegLen * CTRL_FRAC;  // outer
+    C2.Y := P.Species.Center.Y - LegUY * LegLen * CTRL_FRAC;
+    P.Ctrl1 := C1; P.Ctrl2 := C2; P.CtrlPtsSet := True;
+  end;
+end;
+
+// ---------------------------------------------------------------------------
+
+procedure TDiagramView.ApplySmoothJunction;
+// Enforce collinear inner handles whenever an inner handle is dragged.
+//
+// Inner handles:
+//   Reactant leg → Ctrl2  (nearest the junction)
+//   Product  leg → Ctrl1  (nearest the junction)
+//
+// Arm vector D = draggedInnerPos − J.  Sign convention:
+//
+//   Same role as dragged participant → SAME direction (+D):
+//     Dragging a reactant inner handle places other reactant inner handles
+//     at J + D̂ × their arm length — all reactant handles on the same side.
+//
+//   Opposite role → OPPOSITE direction (−D):
+//     Product inner handles go to J − D̂ × their arm length, and vice-versa.
+//
+// Each handle's distance from J is preserved while collinearity is enforced.
+var
+  R              : TReaction;
+  JPos           : TPointF;
+  DraggedInner   : TPointF;
+  ArmX, ArmY    : Single;
+  ArmLen         : Single;
+  P              : TParticipant;
+  OtherInner     : TPointF;
+  OtherArmLen    : Single;
+  i              : Integer;
+  AutoC1, AutoC2 : TPointF;
+  SignedLen      : Single;
+begin
+  R := FDragCtrlPtReaction;
+  if not Assigned(R) then Exit;
+
+  JPos := R.JunctionPos;
+
+  if FDragCtrlPtIsReactant then
+    DraggedInner := FDraggedParticipant.Ctrl2
+  else
+    DraggedInner := FDraggedParticipant.Ctrl1;
+
+  ArmX   := DraggedInner.X - JPos.X;
+  ArmY   := DraggedInner.Y - JPos.Y;
+  ArmLen := Sqrt(ArmX * ArmX + ArmY * ArmY);
+  if ArmLen < 0.5 then Exit;
+  ArmX := ArmX / ArmLen;
+  ArmY := ArmY / ArmLen;
+
+  for i := 0 to R.Reactants.Count - 1 do
+  begin
+    P := R.Reactants[i];
+    if P = FDraggedParticipant then Continue;
+    if not P.CtrlPtsSet then
+    begin
+      ComputeAutoCtrlPts(P.Species.Center, JPos, i, R.Reactants.Count, True, AutoC1, AutoC2);
+      P.Ctrl1 := AutoC1; P.Ctrl2 := AutoC2; P.CtrlPtsSet := True;
+    end;
+    OtherInner  := P.Ctrl2;
+    OtherArmLen := Sqrt(Sqr(OtherInner.X - JPos.X) + Sqr(OtherInner.Y - JPos.Y));
+    if OtherArmLen < 0.5 then OtherArmLen := ArmLen;
+    // Same role as dragged (reactant–reactant) → same direction (+ArmDir)
+    // Opposite role (dragged is product) → opposite direction (−ArmDir)
+    if FDragCtrlPtIsReactant then SignedLen :=  OtherArmLen
+    else                          SignedLen := -OtherArmLen;
+    P.Ctrl2 := TPointF.Create(JPos.X + ArmX * SignedLen, JPos.Y + ArmY * SignedLen);
+  end;
+
+  for i := 0 to R.Products.Count - 1 do
+  begin
+    P := R.Products[i];
+    if P = FDraggedParticipant then Continue;
+    if not P.CtrlPtsSet then
+    begin
+      ComputeAutoCtrlPts(JPos, P.Species.Center, i, R.Products.Count, False, AutoC1, AutoC2);
+      P.Ctrl1 := AutoC1; P.Ctrl2 := AutoC2; P.CtrlPtsSet := True;
+    end;
+    OtherInner  := P.Ctrl1;
+    OtherArmLen := Sqrt(Sqr(OtherInner.X - JPos.X) + Sqr(OtherInner.Y - JPos.Y));
+    if OtherArmLen < 0.5 then OtherArmLen := ArmLen;
+    // Same role as dragged (product–product) → same direction (+ArmDir)
+    // Opposite role (dragged is reactant) → opposite direction (−ArmDir)
+    if not FDragCtrlPtIsReactant then SignedLen :=  OtherArmLen
+    else                               SignedLen := -OtherArmLen;
+    P.Ctrl1 := TPointF.Create(JPos.X + ArmX * SignedLen, JPos.Y + ArmY * SignedLen);
+  end;
+end;
+
 
 // ---------------------------------------------------------------------------
 //  Bezier geometry helpers
@@ -1663,10 +2122,14 @@ begin
       DirW   := NormalizeVec(DirW);
       BoundW := RectBoundaryIntersect(Reactant.Center, Reactant.HalfW,
                                       Reactant.HalfH, Product.Center);
+      // Back the reactant start off the border by VIEW_REACTANT_GAP.
+      var StartW : TPointF;
+      StartW.X := BoundW.X + DirW.X * VIEW_REACTANT_GAP;
+      StartW.Y := BoundW.Y + DirW.Y * VIEW_REACTANT_GAP;
       TipW   := ProductLineTip(Product.Center, Product.HalfW,
                                 Product.HalfH, Reactant.Center, VIEW_PRODUCT_GAP);
       TipScr := W2S(TipW);
-      ACanvas.DrawLine(W2S(BoundW), TipScr, LinePaint);
+      ACanvas.DrawLine(W2S(StartW), TipScr, LinePaint);
       ArrW         := FilledArrowhead(TipW, DirW, VIEW_ARROW_LEN, VIEW_ARROW_HALF_BASE);
       ArrScr.Tip   := W2S(ArrW.Tip);
       ArrScr.Base1 := W2S(ArrW.Base1);
@@ -1696,11 +2159,24 @@ begin
         tClip := BezierBoundaryT(P.Species.Center, C1W, C2W, JPos,
                                   P.Species.Center, P.Species.HalfW,
                                   P.Species.HalfH, True {inside at t=0});
-        // Right sub-curve [tClip..1]: RA is on the boundary, RD = junction
+        // Right sub-curve [tClip..1]: RA is on the boundary, RD = junction.
+        // Shift the start forward by VIEW_BEZIER_REACTANT_GAP along the curve
+        // tangent at RA (direction RB − RA) to leave a gap at the species border.
         BezierRightHalf(P.Species.Center, C1W, C2W, JPos, tClip,
                         RA, RB, RC, RD);
+        var TangX := RB.X - RA.X;
+        var TangY := RB.Y - RA.Y;
+        var TangLen := Sqrt(TangX * TangX + TangY * TangY);
+        var BezStartW : TPointF;
+        if TangLen > 0.5 then
+        begin
+          BezStartW.X := RA.X + (TangX / TangLen) * VIEW_BEZIER_REACTANT_GAP;
+          BezStartW.Y := RA.Y + (TangY / TangLen) * VIEW_BEZIER_REACTANT_GAP;
+        end
+        else
+          BezStartW := RA;
         Builder := TSkPathBuilder.Create;
-        Builder.MoveTo(W2S(RA));
+        Builder.MoveTo(W2S(BezStartW));
         Builder.CubicTo(W2S(RB), W2S(RC), JScr);
         Path := Builder.Detach;
         ACanvas.DrawPath(Path, LinePaint);
@@ -1720,21 +2196,26 @@ begin
         tClip := BezierBoundaryT(JPos, C1W, C2W, P.Species.Center,
                                   P.Species.Center, P.Species.HalfW,
                                   P.Species.HalfH, False {outside at t=0});
-        // Left sub-curve [0..tClip]: LA = junction, LD is on the boundary
+        // Left sub-curve [0..tClip]: LA = junction, LD is on the boundary.
+        // The curve is redrawn below, shortened to TipW, so only compute the split.
         BezierLeftHalf(JPos, C1W, C2W, P.Species.Center, tClip,
                        LA, LB, LC, LD);
-        Builder := TSkPathBuilder.Create;
-        Builder.MoveTo(JScr);
-        Builder.CubicTo(W2S(LB), W2S(LC), W2S(LD));
-        Path := Builder.Detach;
-        ACanvas.DrawPath(Path, LinePaint);
 
         // Arrowhead: tangent at the boundary crossing = (LD - LC) direction.
         // This naturally "rotates about the species centre" as ctrl pts move.
+        // Back the tip off by VIEW_BEZIER_PRODUCT_GAP along that tangent so
+        // the gap matches the straight/linear product-leg behaviour.
         DirW.X := LD.X - LC.X;
         DirW.Y := LD.Y - LC.Y;
         DirW   := NormalizeVec(DirW);
-        ArrW         := FilledArrowhead(LD, DirW, VIEW_ARROW_LEN, VIEW_ARROW_HALF_BASE);
+        TipW.X := LD.X - DirW.X * VIEW_BEZIER_PRODUCT_GAP;
+        TipW.Y := LD.Y - DirW.Y * VIEW_BEZIER_PRODUCT_GAP;
+        Builder := TSkPathBuilder.Create;
+        Builder.MoveTo(JScr);
+        Builder.CubicTo(W2S(LB), W2S(LC), W2S(TipW));
+        Path := Builder.Detach;
+        ACanvas.DrawPath(Path, LinePaint);
+        ArrW         := FilledArrowhead(TipW, DirW, VIEW_ARROW_LEN, VIEW_ARROW_HALF_BASE);
         ArrScr.Tip   := W2S(ArrW.Tip);
         ArrScr.Base1 := W2S(ArrW.Base1);
         ArrScr.Base2 := W2S(ArrW.Base2);
@@ -1748,7 +2229,19 @@ begin
     begin
       BoundW := RectBoundaryIntersect(P.Species.Center, P.Species.HalfW,
                                       P.Species.HalfH, JPos);
-      ACanvas.DrawLine(W2S(BoundW), JScr, LinePaint);
+      // Direction from boundary toward junction; back start off the border.
+      var RDirX := JPos.X - BoundW.X;
+      var RDirY := JPos.Y - BoundW.Y;
+      var RDirLen := Sqrt(RDirX * RDirX + RDirY * RDirY);
+      var StraightStart : TPointF;
+      if RDirLen > 0.5 then
+      begin
+        StraightStart.X := BoundW.X + (RDirX / RDirLen) * VIEW_REACTANT_GAP;
+        StraightStart.Y := BoundW.Y + (RDirY / RDirLen) * VIEW_REACTANT_GAP;
+      end
+      else
+        StraightStart := BoundW;
+      ACanvas.DrawLine(W2S(StraightStart), JScr, LinePaint);
     end;
 
     for P in R.Products do
@@ -1948,24 +2441,31 @@ end;
 procedure TDiagramView.RenderCtrlPtHandles(const ACanvas: ISkCanvas);
 // Draw small circles at each Bézier control point for selected Bézier reactions,
 // plus dashed lines from the handle to its respective endpoint (tangent arm).
+// When a reaction has IsJunctionSmooth set, its inner (junction-side) handles
+// are drawn in teal so the user can easily distinguish the coupled pair.
 var
   R          : TReaction;
   P          : TParticipant;
   C1W, C2W   : TPointF;
   StartW     : TPointF;
   EndW       : TPointF;
-  FanIdx     : Integer;
   FanTotal   : Integer;
   i          : Integer;
   FillPaint  : ISkPaint;
   RingPaint  : ISkPaint;
+  InnerPaint : ISkPaint;
   Radius     : Single;
+  SmoothThis : Boolean;   // IsJunctionSmooth for the current reaction
 
-  procedure DrawHandle(const CW: TPointF; const AnchorW: TPointF);
+  // AIsInner: True when this handle is the junction-side (inner) one.
+  procedure DrawHandle(const CW: TPointF; const AnchorW: TPointF; AIsInner: Boolean);
   begin
     DrawDashedLine(ACanvas, W2S(AnchorW), W2S(CW), CLR_CTRL_LINE, 1.0);
     ACanvas.DrawCircle(W2S(CW), Radius, FillPaint);
-    ACanvas.DrawCircle(W2S(CW), Radius, RingPaint);
+    if AIsInner and SmoothThis then
+      ACanvas.DrawCircle(W2S(CW), Radius, InnerPaint)
+    else
+      ACanvas.DrawCircle(W2S(CW), Radius, RingPaint);
   end;
 
 begin
@@ -1982,14 +2482,20 @@ begin
   RingPaint.Style       := TSkPaintStyle.Stroke;
   RingPaint.StrokeWidth := W2SLen(1.0);
 
+  InnerPaint             := TSkPaint.Create;
+  InnerPaint.AntiAlias   := True;
+  InnerPaint.Color       := CLR_CTRL_INNER_SMOOTH;
+  InnerPaint.Style       := TSkPaintStyle.Stroke;
+  InnerPaint.StrokeWidth := W2SLen(1.5);
+
   for R in FModel.Reactions do
   begin
     if not (R.Selected and R.IsBezier) then Continue;
 
-    var JPos := R.JunctionPos;
+    SmoothThis := R.IsJunctionSmooth;
+    var JPos   := R.JunctionPos;
 
-    // Reactant control point handles.
-    // StartW = species centre (conceptual curve start, may be inside node).
+    // Reactant handles: inner = Ctrl2 (nearest junction).
     FanTotal := R.Reactants.Count;
     for i := 0 to FanTotal - 1 do
     begin
@@ -1997,12 +2503,11 @@ begin
       StartW := P.Species.Center;
       EndW   := JPos;
       GetCtrlPts(P, StartW, EndW, i, FanTotal, True, C1W, C2W);
-      DrawHandle(C1W, StartW);  // Ctrl1 anchored to species centre
-      DrawHandle(C2W, EndW);    // Ctrl2 anchored to junction
+      DrawHandle(C1W, StartW, False);  // Ctrl1 — outer (species side)
+      DrawHandle(C2W, EndW,   True);   // Ctrl2 — inner (junction side)
     end;
 
-    // Product control point handles.
-    // EndW = species centre (conceptual curve end, may be inside node).
+    // Product handles: inner = Ctrl1 (nearest junction).
     FanTotal := R.Products.Count;
     for i := 0 to FanTotal - 1 do
     begin
@@ -2010,8 +2515,8 @@ begin
       StartW := JPos;
       EndW   := P.Species.Center;
       GetCtrlPts(P, StartW, EndW, i, FanTotal, False, C1W, C2W);
-      DrawHandle(C1W, StartW);  // Ctrl1 anchored to junction
-      DrawHandle(C2W, EndW);    // Ctrl2 anchored to species centre
+      DrawHandle(C1W, StartW, True);   // Ctrl1 — inner (junction side)
+      DrawHandle(C2W, EndW,   False);  // Ctrl2 — outer (species side)
     end;
   end;
 end;
@@ -2084,6 +2589,7 @@ begin
   FDraggedJunction      := nil;
   FDraggedCtrlNum       := 0;
   FDragCtrlPtPartIdx    := -1;
+  FDragCtrlPtReaction   := nil;
 end;
 
 // ---------------------------------------------------------------------------
@@ -2157,10 +2663,18 @@ procedure TDiagramView.AutoLayout(Iterations: Integer);
 var
   SnapBefore : string;
   SnapNum    : Integer;
+  R          : TReaction;
 begin
   SnapBefore := TakeSnapshot;
   SnapNum    := FNextSpeciesNum;
   TAutoLayout.Run(FModel, Iterations);
+  // Auto-layout moves species centres and junction positions but leaves stored
+  // control points at their old absolute coordinates.  For any reaction that
+  // uses smooth junctions, rematerialise the ctrl pts from the new positions
+  // so the inner handles remain collinear through the (now-moved) junction.
+  for R in FModel.Reactions do
+    if R.IsBezier and R.IsJunctionSmooth then
+      MaterialiseSmoothCtrlPts(R);
   FUndoManager.Push(TSnapshotCmd.Create('Auto layout', FModel,
     SnapBefore, TakeSnapshot, SnapNum, FNextSpeciesNum, FRestoreProc));
 end;

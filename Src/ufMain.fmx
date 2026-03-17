@@ -105,6 +105,15 @@ object frmMain: TfrmMain
       Text = 'Set to Bezier'
       OnClick = btnSetBezierClick
     end
+    object btnSmoothJunction: TSpeedButton
+      Align = Left
+      Position.X = 492.000000000000000000
+      Size.Width = 76.000000000000000000
+      Size.Height = 40.000000000000000000
+      Size.PlatformDefault = False
+      Text = 'Smooth Junc'
+      OnClick = btnSmoothJunctionClick
+    end
   end
   object Layout2: TLayout
     Align = Bottom
@@ -313,6 +322,10 @@ object frmMain: TfrmMain
       Text = 'Delete Species'
       OnClick = mnuDeleteNodeClick
     end
+    object mnuMakeNiceReaction: TMenuItem
+      Text = 'Adjust Reaction'
+      OnClick = mnuMakeNiceReactionClick
+    end
   end
   object MainMenu1: TMainMenu
     Left = 1008
@@ -372,6 +385,26 @@ object frmMain: TfrmMain
         Locked = True
         Text = 'Quit'
         OnClick = mnuQuitClick
+      end
+    end
+    object mnuEdit: TMenuItem
+      Locked = True
+      Text = 'Edit'
+      object mnuUndo: TMenuItem
+        Locked = True
+        ShortCut = 16474
+        Text = 'Undo'
+        OnClick = mnuUndoClick
+      end
+      object mnuRedo: TMenuItem
+        Locked = True
+        ShortCut = 12378
+        Text = 'Redo'
+        OnClick = mnuRedoClick
+      end
+      object MenuItem5: TMenuItem
+        Locked = True
+        Text = '-'
       end
     end
     object mnuHelp: TMenuItem

@@ -113,6 +113,12 @@ type
     btnLinearUniUni: TSpeedButton;
     btnRandomNetwork: TSpeedButton;
     btnSetBezier: TSpeedButton;
+    btnSmoothJunction: TSpeedButton;
+    mnuMakeNiceReaction: TMenuItem;
+    mnuEdit: TMenuItem;
+    mnuUndo: TMenuItem;
+    mnuRedo: TMenuItem;
+    MenuItem5: TMenuItem;
     procedure btnAddBiUniClick(Sender: TObject);
     procedure btnAddSpeciesClick(Sender: TObject);
     procedure btnAddUniBiClick(Sender: TObject);
@@ -125,6 +131,7 @@ type
     procedure btnSaveClick(Sender: TObject);
     procedure btnSelectClick(Sender: TObject);
     procedure btnSetBezierClick(Sender: TObject);
+    procedure btnSmoothJunctionClick(Sender: TObject);
     procedure btnToggleAliasClick(Sender: TObject);
     procedure bynAddBiBiClick(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
@@ -139,8 +146,11 @@ type
     procedure mnuExportAntimonyClick(Sender: TObject);
     procedure mnuGotoPrimaryClick(Sender: TObject);
     procedure mnuImportAntimonyClick(Sender: TObject);
+    procedure mnuMakeNiceReactionClick(Sender: TObject);
     procedure mnuQuitClick(Sender: TObject);
+    procedure mnuRedoClick(Sender: TObject);
     procedure mnuRenameClick(Sender: TObject);
+    procedure mnuUndoClick(Sender: TObject);
     procedure PaintBoxDblClick(Sender: TObject);
     procedure PaintBoxDraw(ASender: TObject; const ACanvas: ISkCanvas; const ADest:
         TRectF; const AOpacity: Single);
@@ -211,9 +221,11 @@ begin
   FModel := TBioModel.Create;
   FView  := TDiagramView.Create(FModel, False {form owns the model separately});
   FView.DefaultBezier := True;
+  FView.DefaultSmoothJunction := True;
   FView.LoadTestData;
   SetScrollBarDefaults;
   btnToggleAlias.Text := 'Alias ✓';
+  btnSmoothJunction.Text := 'Smooth J';
 end;
 
 
@@ -254,9 +266,6 @@ procedure TfrmMain.btnLayoutClick(Sender: TObject);
 var MethodList : TStringList;
     errMsg : String;
 begin
-  //loadlibSBNW (errMsg, methodList);
-  //TSBMLLayout.Create()
-
   FView.AutoLayout;
   UpdateScrollBars;
   PaintBox.Redraw;
@@ -337,6 +346,14 @@ begin
   PaintBox.Redraw;
 end;
 
+procedure TfrmMain.btnSmoothJunctionClick(Sender: TObject);
+begin
+  // Toggle IsJunctionSmooth on every selected Bézier reaction independently.
+  // Non-Bézier reactions are silently skipped.
+  FView.ToggleJunctionSmoothSelected;
+  PaintBox.Redraw;   // redraws inner handles in teal when mode is active
+end;
+
 procedure TfrmMain.btnToggleAliasClick(Sender: TObject);
 begin
   // Toggle the alias indicator and update the button caption to show state.
@@ -347,6 +364,7 @@ begin
     btnToggleAlias.Text := 'Alias ○';
   PaintBox.Redraw;
 end;
+
 
 
 procedure TfrmMain.bynAddBiBiClick(Sender: TObject);
@@ -720,6 +738,25 @@ end;
 procedure TfrmMain.mnuImportAntimonyClick(Sender: TObject);
 begin
   ImportAntimony;
+end;
+
+procedure TfrmMain.mnuMakeNiceReactionClick(Sender: TObject);
+begin
+  if Assigned(FRightClickReaction) then
+    FView.NiceBezierForReaction(FRightClickReaction.Id);
+  PaintBox.Redraw;
+end;
+
+procedure TfrmMain.mnuRedoClick(Sender: TObject);
+begin
+  FView.Redo;
+  PaintBox.Redraw;
+end;
+
+procedure TfrmMain.mnuUndoClick(Sender: TObject);
+begin
+  FView.Undo;
+  PaintBox.Redraw;
 end;
 
 procedure TfrmMain.PaintBoxMouseWheel(Sender: TObject; Shift: TShiftState;

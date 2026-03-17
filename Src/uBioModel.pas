@@ -125,9 +125,10 @@ type
     FProducts    : TObjectList<TParticipant>;
     FSelected    : Boolean;
     FKineticLaw  : string;
-    FIsReversible: Boolean;
-    FIsLinear    : Boolean;
-    FIsBezier    : Boolean;   // True = render legs as cubic Bézier curves
+    FIsReversible    : Boolean;
+    FIsLinear        : Boolean;
+    FIsBezier        : Boolean;   // True = render legs as cubic Bézier curves
+    FIsJunctionSmooth: Boolean;   // True = collinear inner handles (C1 at junction)
   public
     constructor Create(const AId : string; AJX, AJY : Single);
     destructor  Destroy; override;
@@ -138,9 +139,10 @@ type
     property Products     : TObjectList<TParticipant>     read FProducts;
     property Selected     : Boolean                       read FSelected     write FSelected;
     property KineticLaw   : string                        read FKineticLaw   write FKineticLaw;
-    property IsReversible : Boolean                       read FIsReversible write FIsReversible;
-    property IsLinear     : Boolean                       read FIsLinear     write FIsLinear;
-    property IsBezier     : Boolean                       read FIsBezier     write FIsBezier;
+    property IsReversible    : Boolean read FIsReversible    write FIsReversible;
+    property IsLinear        : Boolean read FIsLinear        write FIsLinear;
+    property IsBezier        : Boolean read FIsBezier        write FIsBezier;
+    property IsJunctionSmooth: Boolean read FIsJunctionSmooth write FIsJunctionSmooth;
 
     function ReactantSpecies(AIndex: Integer): TSpeciesNode;
     function ProductSpecies (AIndex: Integer): TSpeciesNode;
@@ -409,9 +411,10 @@ begin
   FProducts     := TObjectList<TParticipant>.Create(True);
   FSelected     := False;
   FKineticLaw   := '';
-  FIsReversible := False;
-  FIsLinear     := False;
-  FIsBezier     := False;
+  FIsReversible  := False;
+  FIsLinear      := False;
+  FIsBezier      := False;
+  FIsJunctionSmooth := False;
 end;
 
 destructor TReaction.Destroy;
@@ -442,9 +445,10 @@ begin
   Result.AddPair('jx',           TJSONNumber.Create(FJunctionPos.X));
   Result.AddPair('jy',           TJSONNumber.Create(FJunctionPos.Y));
   Result.AddPair('kineticLaw',   FKineticLaw);
-  Result.AddPair('isReversible', TJSONBool.Create(FIsReversible));
-  Result.AddPair('isLinear',     TJSONBool.Create(FIsLinear));
-  Result.AddPair('isBezier',     TJSONBool.Create(FIsBezier));
+  Result.AddPair('isReversible',     TJSONBool.Create(FIsReversible));
+  Result.AddPair('isLinear',         TJSONBool.Create(FIsLinear));
+  Result.AddPair('isBezier',         TJSONBool.Create(FIsBezier));
+  Result.AddPair('isJunctionSmooth', TJSONBool.Create(FIsJunctionSmooth));
 
   Arr := TJSONArray.Create;
   for P in FReactants do
@@ -991,6 +995,9 @@ begin
 
     var BezVal := RctObj.GetValue('isBezier');
     if Assigned(BezVal) then R.IsBezier := (BezVal as TJSONBool).AsBoolean;
+
+    var JSVal := RctObj.GetValue('isJunctionSmooth');
+    if Assigned(JSVal) then R.IsJunctionSmooth := (JSVal as TJSONBool).AsBoolean;
 
     // Helper to load a participant object with optional control points
     var LoadParticipant := procedure(APObj: TJSONObject; AList: TObjectList<TParticipant>)
