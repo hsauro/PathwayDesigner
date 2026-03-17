@@ -1,5 +1,6 @@
 
-<img src="https://img.shields.io" alt="License">
+[<img src="https://img.shields.io" alt="License">](https://img.shields.io/github/license/hsauro/PathwayDesigner
+)
 
 
 # PathwayDesigner
