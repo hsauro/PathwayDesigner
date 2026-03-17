@@ -14,7 +14,7 @@ PathwayDesigner is a GUI tool for drawing and editing biochemical networks. Visu
 
 An initial binary release is available in the releases section, version 0.1.0 for windows only. Mac binaries (DMG files) will be made if there are requests.
 
-## Vession 0.1.0
+### Vession 0.1.0
 
 This version supports:
 
