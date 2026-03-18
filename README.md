@@ -46,7 +46,8 @@ This version adds:
 - Styling, such as Echer style
 - Alignment tools
 - Cicularlize a set of nodes
-- And more
+- Interchange between json format and Alcuin human reable format
+- Try to add Deckard's autolayout algorithm 
   
 ## Contributing
 
