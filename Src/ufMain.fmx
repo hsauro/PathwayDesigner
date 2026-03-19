@@ -3,7 +3,7 @@ object frmMain: TfrmMain
   Top = 0
   Caption = 'PathwayDesigner'
   ClientHeight = 884
-  ClientWidth = 1346
+  ClientWidth = 1402
   Position = MainFormCenter
   FormFactor.Width = 320
   FormFactor.Height = 480
@@ -15,7 +15,7 @@ object frmMain: TfrmMain
   DesignerMasterStyle = 0
   object Layout1: TLayout
     Align = Top
-    Size.Width = 1346.000000000000000000
+    Size.Width = 1402.000000000000000000
     Size.Height = 40.000000000000000000
     Size.PlatformDefault = False
     TabOrder = 0
@@ -114,11 +114,20 @@ object frmMain: TfrmMain
       Text = 'Smooth Junc'
       OnClick = btnSmoothJunctionClick
     end
+    object btnMakeNice: TSpeedButton
+      Align = Left
+      Position.X = 568.000000000000000000
+      Size.Width = 76.000000000000000000
+      Size.Height = 40.000000000000000000
+      Size.PlatformDefault = False
+      Text = 'Make Nice'
+      OnClick = btnMakeNiceClick
+    end
   end
   object Layout2: TLayout
     Align = Bottom
     Position.Y = 834.000000000000000000
-    Size.Width = 1346.000000000000000000
+    Size.Width = 1402.000000000000000000
     Size.Height = 50.000000000000000000
     Size.PlatformDefault = False
     TabOrder = 1
@@ -255,7 +264,7 @@ object frmMain: TfrmMain
   end
   object Layout4: TLayout
     Align = Client
-    Size.Width = 1298.000000000000000000
+    Size.Width = 1177.000000000000000000
     Size.Height = 794.000000000000000000
     Size.PlatformDefault = False
     TabOrder = 3
@@ -265,7 +274,7 @@ object frmMain: TfrmMain
       SmallChange = 20.000000000000000000
       Orientation = Horizontal
       Position.Y = 776.000000000000000000
-      Size.Width = 1298.000000000000000000
+      Size.Width = 1177.000000000000000000
       Size.Height = 18.000000000000000000
       Size.PlatformDefault = False
       TabOrder = 0
@@ -276,7 +285,7 @@ object frmMain: TfrmMain
       Max = 600.000000000000000000
       SmallChange = 20.000000000000000000
       Orientation = Vertical
-      Position.X = 1280.000000000000000000
+      Position.X = 1159.000000000000000000
       Size.Width = 18.000000000000000000
       Size.Height = 776.000000000000000000
       Size.PlatformDefault = False
@@ -286,7 +295,7 @@ object frmMain: TfrmMain
     object PaintBox: TSkPaintBox
       Align = Client
       HitTest = True
-      Size.Width = 1280.000000000000000000
+      Size.Width = 1159.000000000000000000
       Size.Height = 776.000000000000000000
       Size.PlatformDefault = False
       OnDblClick = PaintBoxDblClick
@@ -414,6 +423,40 @@ object frmMain: TfrmMain
         Text = 'About'
         OnClick = mnuAboutClick
       end
+    end
+  end
+  object Layout5: TLayout
+    Align = Right
+    Position.X = 1225.000000000000000000
+    Position.Y = 40.000000000000000000
+    Size.Width = 177.000000000000000000
+    Size.Height = 794.000000000000000000
+    Size.PlatformDefault = False
+    TabOrder = 7
+    object ColorListBox1: TColorListBox
+      Position.X = 17.000000000000000000
+      Position.Y = 82.000000000000000000
+      Size.Width = 152.000000000000000000
+      Size.Height = 200.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 0
+      DefaultItemStyles.ItemStyle = ''
+      DefaultItemStyles.GroupHeaderStyle = ''
+      DefaultItemStyles.GroupFooterStyle = ''
+      Viewport.Width = 132.000000000000000000
+      Viewport.Height = 196.000000000000000000
+    end
+    object ColorComboBox1: TColorComboBox
+      DropDownKind = Custom
+      Color = claNull
+      DisableFocusEffect = False
+      DropDownCount = 14
+      Position.X = 16.000000000000000000
+      Position.Y = 304.000000000000000000
+      Size.Width = 153.000000000000000000
+      Size.Height = 22.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 1
     end
   end
   object ImageList1: TImageList

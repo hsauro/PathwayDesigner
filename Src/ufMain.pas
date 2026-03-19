@@ -53,7 +53,7 @@ uses
   uDiagramView,
   uAntimonyBridge,
   uRandomNetwork,
-  uAppVersion, FMX.Objects;
+  uAppVersion, FMX.Objects, FMX.Colors, FMX.ListBox, FMX.Ani;
 
 
 type
@@ -119,12 +119,17 @@ type
     mnuUndo: TMenuItem;
     mnuRedo: TMenuItem;
     MenuItem5: TMenuItem;
+    btnMakeNice: TSpeedButton;
+    Layout5: TLayout;
+    ColorListBox1: TColorListBox;
+    ColorComboBox1: TColorComboBox;
     procedure btnAddBiUniClick(Sender: TObject);
     procedure btnAddSpeciesClick(Sender: TObject);
     procedure btnAddUniBiClick(Sender: TObject);
     procedure btnAddUniUniClick(Sender: TObject);
     procedure btnLayoutClick(Sender: TObject);
     procedure btnLinearUniUniClick(Sender: TObject);
+    procedure btnMakeNiceClick(Sender: TObject);
     procedure btnNewClick(Sender: TObject);
     procedure btnOpenClick(Sender: TObject);
     procedure btnRandomNetworkClick(Sender: TObject);
@@ -277,6 +282,15 @@ begin
   PaintBox.Redraw;
 end;
 
+procedure TfrmMain.btnMakeNiceClick(Sender: TObject);
+var R : TReaction;
+begin
+  for R in FModel.SelectedReactions do
+    if FModel.FindReactionById(R.Id) <> nil then
+      FView.NiceBezierForReaction(R.Id);
+  PaintBox.Redraw;
+end;
+
 procedure TfrmMain.btnNewClick(Sender: TObject);
 begin
   if MessageDlg('Clear the current diagram?', TMsgDlgType.mtConfirmation,
@@ -310,9 +324,9 @@ end;
 
 procedure TfrmMain.btnRandomNetworkClick(Sender: TObject);
 begin
-  TRandomNetwork.Generate(FModel, 8, 10);  // 8 species, 10 reactions
+  TRandomNetwork.Generate(FModel, 12, 16);  // 8 species, 10 reactions
   FView.SyncSpeciesNameCounter;            // keep S-name counter in sync
-  FView.AutoLayout;                        // arrange sensibly
+  //FView.AutoLayout;                        // arrange sensibly
   HScrollBar.Value := 0;
   VScrollBar.Value := 0;
   PaintBox.Redraw;
@@ -631,7 +645,7 @@ var
   EditTarget : TSpeciesNode;
   NewName    : string;
 begin
- if not Assigned(FRightClickSpecies) then Exit;
+  if not Assigned(FRightClickSpecies) then Exit;
 
   // Rename always edits the primary's name so all aliases reflect it.
   if FRightClickSpecies.IsAlias then
@@ -642,7 +656,9 @@ begin
   NewName := InputBox('Rename Species', 'Name:', EditTarget.Name);
   if (NewName <> '') and (NewName <> EditTarget.Name) then
   begin
+    // Route through the view so FitNodeToText and undo are both handled.
     EditTarget.Name := NewName;
+    FView.FitNodeToText(EditTarget);
     PaintBox.Redraw;
   end;
 end;

@@ -53,6 +53,7 @@ const
   VIEW_RING_OUTSET     = 4.0;
   VIEW_RING_WIDTH      = 2.5;
   VIEW_ALIAS_OFFSET    = 24.0;
+  VIEW_NODE_TEXT_PAD   = 10.0;  // world px padding each side of label inside node
 
 // ---------------------------------------------------------------------------
 type
@@ -63,6 +64,14 @@ type
   );
 
   TRightClickTarget = (rctNone, rctPrimary, rctAlias, rctReaction);
+
+  // Per-participant drag info: which handles to translate and their saved originals.
+  TCtrlPtDragInfo = record
+    Orig1  : TPointF;   // Ctrl1 position at drag-start
+    Orig2  : TPointF;   // Ctrl2 position at drag-start
+    Move1  : Boolean;   // translate Ctrl1 by drag delta
+    Move2  : Boolean;   // translate Ctrl2 by drag delta
+  end;
 
   TDiagramView = class
   private
@@ -81,6 +90,11 @@ type
     FDragAnchorWorld  : TPointF;
     FSavedSpeciesPos  : TDictionary<TSpeciesNode, TPointF>;
     FSavedJunctionPos : TDictionary<TReaction,    TPointF>;
+    // Ctrl pt translation during node-group drag
+    FSavedCtrlPts     : TDictionary<TParticipant, TCtrlPtDragInfo>;
+    FDragHasCtrlPts   : Boolean;   // any CtrlPtsSet handles need translating
+    FDragNodesSnap    : string;    // pre-drag snapshot when ctrl pts are affected
+    FDragNodesSnapNum : Integer;
 
     FDraggedJunction : TReaction;
 
@@ -219,6 +233,9 @@ type
     // Enforce collinear inner handles through the junction (smooth-junction mode).
     procedure ApplySmoothJunction;
 
+    // Measure the rendered width of AText at VIEW_FONT_SIZE in world units.
+    function  MeasureTextWorldWidth(const AText: string): Single;
+
     // Compute the smooth axis unit vector for reaction R (CentR → CentP direction).
     // Used by MaterialiseSmoothCtrlPts.
     procedure ComputeSmoothAxis(R: TReaction; out AAxisX, AAxisY: Single);
@@ -311,6 +328,11 @@ type
     // Convenient for menu handlers that operate on the selection.
     function SelectedReaction: TReaction;
 
+    // Expand a species node's width so its label fits with padding on each side.
+    // Pass the primary node; alias nodes sharing the same name are also resized.
+    // Call after any name change and before taking an undo snapshot.
+    procedure FitNodeToText(S: TSpeciesNode);
+
     // Reset all Bézier control points on the given reaction and reposition the
     // junction at the natural centroid midpoint so the curves look clean.
     // The reaction is set to Bézier mode if it is not already.
@@ -385,6 +407,9 @@ begin
   FPendingProducts     := TList<TSpeciesNode>.Create;
   FSavedSpeciesPos     := TDictionary<TSpeciesNode, TPointF>.Create;
   FSavedJunctionPos    := TDictionary<TReaction,    TPointF>.Create;
+  FSavedCtrlPts        := TDictionary<TParticipant, TCtrlPtDragInfo>.Create;
+  FDragHasCtrlPts      := False;
+  FDragNodesSnapNum    := 0;
   FUndoManager         := TUndoManager.Create;
   // Build the restore callback once; it captures Self via closure.
   FRestoreProc := MakeRestoreProc();
@@ -394,6 +419,7 @@ destructor TDiagramView.Destroy;
 begin
   FUndoManager.Free;
   FSavedJunctionPos.Free;
+  FSavedCtrlPts.Free;
   FSavedSpeciesPos.Free;
   FPendingProducts.Free;
   FPendingReactants.Free;
@@ -696,9 +722,13 @@ var
   R        : TReaction;
   P        : TParticipant;
   AllInSet : Boolean;
+  Info     : TCtrlPtDragInfo;
+  JunctionMoved : Boolean;
+  SpeciesMoved  : Boolean;
 begin
   FSavedSpeciesPos.Clear;
   FSavedJunctionPos.Clear;
+  FSavedCtrlPts.Clear;
 
   SelSet := TDictionary<TSpeciesNode, Boolean>.Create;
   try
@@ -723,6 +753,49 @@ begin
       if AllInSet then
         FSavedJunctionPos.AddOrSetValue(R, R.JunctionPos);
     end;
+
+    // --- Ctrl pt translation ---
+    // For each Bézier participant with stored ctrl pts, record which handles
+    // need to follow the drag and their pre-drag positions.
+    //
+    //   Reactant leg: Ctrl1 = outer (species-side), Ctrl2 = inner (junction-side)
+    //   Product  leg: Ctrl1 = inner (junction-side), Ctrl2 = outer (species-side)
+    //
+    // A handle translates when its associated endpoint is in the moved set.
+    for R in FModel.Reactions do
+    begin
+      if not R.IsBezier then Continue;
+      JunctionMoved := FSavedJunctionPos.ContainsKey(R);
+
+      for P in R.Reactants do
+      begin
+        if not P.CtrlPtsSet then Continue;
+        SpeciesMoved := SelSet.ContainsKey(P.Species);
+        Info.Move1 := SpeciesMoved;   // Ctrl1 = species-side outer
+        Info.Move2 := JunctionMoved;  // Ctrl2 = junction-side inner
+        if Info.Move1 or Info.Move2 then
+        begin
+          Info.Orig1 := P.Ctrl1;
+          Info.Orig2 := P.Ctrl2;
+          FSavedCtrlPts.AddOrSetValue(P, Info);
+        end;
+      end;
+
+      for P in R.Products do
+      begin
+        if not P.CtrlPtsSet then Continue;
+        SpeciesMoved := SelSet.ContainsKey(P.Species);
+        Info.Move1 := JunctionMoved;  // Ctrl1 = junction-side inner
+        Info.Move2 := SpeciesMoved;   // Ctrl2 = species-side outer
+        if Info.Move1 or Info.Move2 then
+        begin
+          Info.Orig1 := P.Ctrl1;
+          Info.Orig2 := P.Ctrl2;
+          FSavedCtrlPts.AddOrSetValue(P, Info);
+        end;
+      end;
+    end;
+    FDragHasCtrlPts := FSavedCtrlPts.Count > 0;
   finally
     SelSet.Free;
   end;
@@ -730,15 +803,39 @@ end;
 
 procedure TDiagramView.ApplyDragDelta(const Delta: TPointF);
 var
-  Pair  : TPair<TSpeciesNode, TPointF>;
-  RPair : TPair<TReaction,    TPointF>;
+  Pair    : TPair<TSpeciesNode, TPointF>;
+  RPair   : TPair<TReaction,    TPointF>;
+  CPair   : TPair<TParticipant, TCtrlPtDragInfo>;
+  Info    : TCtrlPtDragInfo;
+  R       : TReaction;
 begin
+  // Move species and junctions.
   for Pair in FSavedSpeciesPos do
     Pair.Key.Center := TPointF.Create(
       Pair.Value.X + Delta.X, Pair.Value.Y + Delta.Y);
   for RPair in FSavedJunctionPos do
     RPair.Key.JunctionPos := TPointF.Create(
       RPair.Value.X + Delta.X, RPair.Value.Y + Delta.Y);
+
+  // Translate stored Bézier ctrl pts whose associated endpoint(s) moved.
+  // Applying saved-original + delta each frame avoids compounding errors.
+  for CPair in FSavedCtrlPts do
+  begin
+    Info := CPair.Value;
+    if Info.Move1 then
+      CPair.Key.Ctrl1 := TPointF.Create(Info.Orig1.X + Delta.X, Info.Orig1.Y + Delta.Y);
+    if Info.Move2 then
+      CPair.Key.Ctrl2 := TPointF.Create(Info.Orig2.X + Delta.X, Info.Orig2.Y + Delta.Y);
+  end;
+
+  // For smooth reactions whose junction moved, rematerialise all ctrl pts from
+  // the updated positions so collinearity through the junction is preserved.
+  for RPair in FSavedJunctionPos do
+  begin
+    R := RPair.Key;
+    if R.IsBezier and R.IsJunctionSmooth then
+      MaterialiseSmoothCtrlPts(R);
+  end;
 end;
 
 // ===========================================================================
@@ -1091,6 +1188,13 @@ begin
           end;
           FDragAnchorWorld := WorldPt;
           SaveDragPositions;
+          // When stored ctrl pts will be translated with the group, a lightweight
+          // TMoveNodesCmd is insufficient for undo — capture a full snapshot.
+          if FDragHasCtrlPts then
+          begin
+            FDragNodesSnap    := TakeSnapshot;
+            FDragNodesSnapNum := FNextSpeciesNum;
+          end;
           FState := isDraggingNodes;
         end;
       end
@@ -1210,9 +1314,17 @@ begin
            (RPair.Value.Y <> RPair.Key.JunctionPos.Y) then AnyMoved := True;
       end;
       if AnyMoved then
-        FUndoManager.Push(TMoveNodesCmd.Create(FModel,
-          SpecBefore, SpecAfter, JctBefore, JctAfter))
-      else
+      begin
+        if FDragHasCtrlPts then
+          // Ctrl pts also moved — only a snapshot covers all changes for undo.
+          FUndoManager.Push(TSnapshotCmd.Create('Move', FModel,
+            FDragNodesSnap, TakeSnapshot,
+            FDragNodesSnapNum, FNextSpeciesNum, FRestoreProc))
+        else
+          FUndoManager.Push(TMoveNodesCmd.Create(FModel,
+            SpecBefore, SpecAfter, JctBefore, JctAfter));
+      end;
+      if FDragHasCtrlPts or not AnyMoved then
       begin
         SpecBefore.Free; SpecAfter.Free;
         JctBefore.Free;  JctAfter.Free;
@@ -1298,6 +1410,7 @@ begin
     var SnapBefore := TakeSnapshot;
     var SnapNum    := FNextSpeciesNum;
     EditTarget.Name := NewName;
+    FitNodeToText(EditTarget);   // widen node if new name is longer
     FUndoManager.Push(TSnapshotCmd.Create('Rename', FModel,
       SnapBefore, TakeSnapshot, SnapNum, FNextSpeciesNum, FRestoreProc));
   end;
@@ -1323,8 +1436,7 @@ begin
   SnapNum    := FNextSpeciesNum;
 
   for R in FModel.Reactions do
-    begin
-    //if R.Selected and (R.Reactants.Count = 1) and (R.Products.Count = 1) then
+    if R.Selected and (R.Reactants.Count = 1) and (R.Products.Count = 1) then
     begin
       R.IsLinear := not R.IsLinear;
 
@@ -1342,7 +1454,6 @@ begin
         R.JunctionPos := TPointF.Create(
           (A.X + B.X) * 0.5, (A.Y + B.Y) * 0.5);
       end;
-    end;
     end;
 
   FUndoManager.Push(TSnapshotCmd.Create('Toggle linear', FModel,
@@ -2579,6 +2690,46 @@ begin
         Result := True; Exit;
       end;
   end;
+end;
+
+// ---------------------------------------------------------------------------
+
+function TDiagramView.MeasureTextWorldWidth(const AText: string): Single;
+var
+  Font : ISkFont;
+begin
+  // Create the font at VIEW_FONT_SIZE (world units).  Skia returns MeasureText
+  // in the same unit as the font size, so the result is directly comparable
+  // to S.Width which is also stored in world units.
+  Font   := TSkFont.Create(nil, VIEW_FONT_SIZE);
+  Result := Font.MeasureText(AText);
+end;
+
+// ---------------------------------------------------------------------------
+
+procedure TDiagramView.FitNodeToText(S: TSpeciesNode);
+// Widen S so that its DisplayName fits inside the node with VIEW_NODE_TEXT_PAD
+// on each side.  Shrinking is intentionally not done — the user may have set a
+// deliberately wide node.  All alias nodes of the same primary are also resized
+// so they stay visually consistent.
+var
+  Required : Single;
+  Alias    : TSpeciesNode;
+  Primary  : TSpeciesNode;
+begin
+  // Always operate on the primary so DisplayName is correct.
+  if S.IsAlias then Primary := S.AliasOf else Primary := S;
+
+  Required := MeasureTextWorldWidth(Primary.DisplayName) + 2 * VIEW_NODE_TEXT_PAD;
+
+  if Required > Primary.Width then
+    Primary.Width := Required;
+
+  // Resize aliases to match the primary's (possibly new) width.
+  for Alias in FModel.Species do
+    if Alias.IsAlias and (Alias.AliasOf = Primary) then
+      if Required > Alias.Width then
+        Alias.Width := Required;
 end;
 
 // ---------------------------------------------------------------------------
