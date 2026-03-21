@@ -31,6 +31,7 @@ uses
   uBioModel,
   uGeometry,
   uAntimonyBridge,
+  uSBMLBridge,
   uAutoLayout,
   uUndoManager;
 
@@ -270,7 +271,7 @@ type
     procedure SetModeAddReaction(ReactantCount, ProductCount: Integer);
     procedure CancelCurrentAction;
 
-    procedure SyncSpeciesNameCounter;
+    procedure SyncSpeciesIdCounter;
 
     function RightClickHitTest(X, Y: Single;
                                out HitSpecies : TSpeciesNode;
@@ -282,6 +283,9 @@ type
     // --- Antimony import / export ---
     procedure ImportAntimony(const ASource: string);
     function  ExportAntimony: string;
+
+    procedure ImportSBML(const ASource: string);
+    function ExportSBML: string;
 
     // --- Auto-layout ---
     procedure AutoLayout(Iterations: Integer = 200);
@@ -941,7 +945,7 @@ begin
 
   RateLaw := KName;
   for i := 0 to FPendingReactants.Count - 1 do
-    RateLaw := RateLaw + '*' + FPendingReactants[i].DisplayName;
+    RateLaw := RateLaw + '*' + FPendingReactants[i].Id;
 
   R.KineticLaw := RateLaw;
 
@@ -983,7 +987,7 @@ begin
   Inc(FNextSpeciesNum);
 end;
 
-procedure TDiagramView.SyncSpeciesNameCounter;
+procedure TDiagramView.SyncSpeciesIdCounter;
 var
   S    : TSpeciesNode;
   N    : Integer;
@@ -992,9 +996,9 @@ var
 begin
   MaxN := 0;
   for S in FModel.Species do
-    if (Length(S.Name) > 1) and (S.Name[Low(S.Name)] = 'S') then
+    if (Length(S.Id) > 1) and (S.Id[Low(S.Id)] = 'S') then
     begin
-      Tail := Copy(S.Name, 2, MaxInt);
+      Tail := Copy(S.Id, 2, MaxInt);
       if TryStrToInt(Tail, N) and (N > MaxN) then MaxN := N;
     end;
   FNextSpeciesNum := MaxN + 1;
@@ -1405,18 +1409,18 @@ procedure TDiagramView.MouseDblClick;
 var
   HitSpecies : TSpeciesNode;
   EditTarget : TSpeciesNode;
-  NewName    : string;
+  NewId    : string;
 begin
   if FState <> isSelect then Exit;
   if not HitTestSpecies(FMouseWorld, HitSpecies) then Exit;
   EditTarget := HitSpecies;
   if HitSpecies.IsAlias then EditTarget := HitSpecies.AliasOf;
-  NewName := InputBox('Rename Species', 'Name:', EditTarget.Name);
-  if (NewName <> '') and (NewName <> EditTarget.Name) then
+  NewId := InputBox('Rename Species', 'Id:', EditTarget.Id);
+  if (NewId <> '') and (NewId <> EditTarget.Id) then
   begin
     var SnapBefore := TakeSnapshot;
     var SnapNum    := FNextSpeciesNum;
-    EditTarget.Name := NewName;
+    EditTarget.Id := NewId;
     FitNodeToText(EditTarget);   // widen node if new name is longer
     FUndoManager.Push(TSnapshotCmd.Create('Rename', FModel,
       SnapBefore, TakeSnapshot, SnapNum, FNextSpeciesNum, FRestoreProc));
@@ -2455,7 +2459,7 @@ begin
     if S.Style.HasCustomStyle and (S.Style.FontSize > 0) then
       EffFontSize := S.Style.FontSize;
 
-    DrawCenteredText(ACanvas, W2S(S.Center), S.DisplayName,
+    DrawCenteredText(ACanvas, W2S(S.Center), S.Id,
                      W2SLen(EffFontSize), LabelColor);
   end;
 end;
@@ -2738,7 +2742,7 @@ begin
   Result := procedure(ANextSpeciesNum: Integer)
   begin
     FNextSpeciesNum := ANextSpeciesNum;
-    SyncSpeciesNameCounter;   // re-sync from model in case it disagrees
+    SyncSpeciesIdCounter;   // re-sync from model in case it disagrees
     FModel.ClearSelection;
   end;
 end;
@@ -2802,7 +2806,7 @@ begin
   // Always operate on the primary so DisplayName is correct.
   if S.IsAlias then Primary := S.AliasOf else Primary := S;
 
-  Required := MeasureTextWorldWidth(Primary.DisplayName) + 2 * VIEW_NODE_TEXT_PAD;
+  Required := MeasureTextWorldWidth(Primary.Id) + 2 * VIEW_NODE_TEXT_PAD;
 
   if Required > Primary.Width then
     Primary.Width := Required;
@@ -2881,7 +2885,7 @@ begin
   SnapBefore := TakeSnapshot;
   SnapNum    := FNextSpeciesNum;
   TAntimonyBridge.ImportFromString(ASource, FModel);
-  SyncSpeciesNameCounter;
+  SyncSpeciesIdCounter;
   FModel.ClearSelection;
   FScrollOffset := TPointF.Create(30, 30);
   FUndoManager.Push(TSnapshotCmd.Create('Import Antimony', FModel,
@@ -2988,7 +2992,7 @@ end;
 procedure TDiagramView.LoadFromFile(const AFileName: string);
 begin
   FModel.LoadFromFile(AFileName);
-  SyncSpeciesNameCounter;
+  SyncSpeciesIdCounter;
   FModel.ClearSelection;
   SetModeSelect;
   FUndoManager.Clear;
@@ -3078,5 +3082,16 @@ begin
   R3.Products.Add (TParticipant.Create(SAtp2, 1.0));
   R3.Products.Add (TParticipant.Create(S6,    1.0));
 end;
+
+
+procedure TDiagramView.ImportSBML(const ASource: string);
+begin
+end;
+
+function TDiagramView.ExportSBML: string;
+begin
+  Result := TSBMLBridge.ExportToString(FModel);
+end;
+
 
 end.

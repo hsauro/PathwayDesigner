@@ -53,7 +53,11 @@ uses
   uDiagramView,
   uAntimonyBridge,
   uRandomNetwork,
-  uAppVersion, FMX.Objects, FMX.Colors, FMX.ListBox, FMX.Ani;
+  uAppVersion,
+  FMX.Objects,
+  FMX.Colors,
+  FMX.ListBox,
+  FMX.Ani;
 
 
 type
@@ -128,6 +132,9 @@ type
     ccbSpeciesBorderColor: TColorComboBox;
     Label1: TLabel;
     Label2: TLabel;
+    mnuSaveToSBML: TMenuItem;
+    MenuItem6: TMenuItem;
+    Button1: TButton;
     procedure btnAddBiUniClick(Sender: TObject);
     procedure btnAddSpeciesClick(Sender: TObject);
     procedure btnAddUniBiClick(Sender: TObject);
@@ -162,6 +169,7 @@ type
     procedure mnuQuitClick(Sender: TObject);
     procedure mnuRedoClick(Sender: TObject);
     procedure mnuRenameClick(Sender: TObject);
+    procedure mnuSaveToSBMLClick(Sender: TObject);
     procedure mnuUndoClick(Sender: TObject);
     procedure PaintBoxDblClick(Sender: TObject);
     procedure PaintBoxDraw(ASender: TObject; const ACanvas: ISkCanvas; const ADest:
@@ -202,6 +210,9 @@ type
     procedure UpdateStatusBar;
     procedure ExportAntimony;
     procedure ImportAntimony;
+
+    procedure ExportSBML;
+    procedure ImportSBML;
 
   public
     { Public declarations }
@@ -320,6 +331,7 @@ begin
     if Dlg.Execute then
     begin
       FView.LoadFromFile(Dlg.FileName);
+      frmMain.Caption := 'Biochemcal Network Editor:  ' + Dlg.FileName;
       UpdateScrollBars;
       PaintBox.Redraw;
     end;
@@ -331,7 +343,7 @@ end;
 procedure TfrmMain.btnRandomNetworkClick(Sender: TObject);
 begin
   TRandomNetwork.Generate(FModel, 10, 12);  // 8 species, 10 reactions
-  FView.SyncSpeciesNameCounter;            // keep S-name counter in sync
+  FView.SyncSpeciesIdCounter;            // keep S-name counter in sync
   //FView.AutoLayout;                        // arrange sensibly
   HScrollBar.Value := 0;
   VScrollBar.Value := 0;
@@ -384,8 +396,6 @@ begin
     btnToggleAlias.Text := 'Alias ○';
   PaintBox.Redraw;
 end;
-
-
 
 procedure TfrmMain.bynAddBiBiClick(Sender: TObject);
 begin
@@ -670,7 +680,7 @@ end;
 procedure TfrmMain.mnuRenameClick(Sender: TObject);
 var
   EditTarget : TSpeciesNode;
-  NewName    : string;
+  NewId    : string;
 begin
   if not Assigned(FRightClickSpecies) then Exit;
 
@@ -680,11 +690,12 @@ begin
   else
     EditTarget := FRightClickSpecies;
 
-  NewName := InputBox('Rename Species', 'Name:', EditTarget.Name);
-  if (NewName <> '') and (NewName <> EditTarget.Name) then
+  NewId := InputBox('Rename Species', 'Id:', EditTarget.Id);
+  if (NewId <> '') and (NewId <> EditTarget.Id) then
   begin
     // Route through the view so FitNodeToText and undo are both handled.
-    EditTarget.Name := NewName;
+    EditTarget.Id := NewId;
+    FModel.RenameSpeciesId(EditTarget.Id, NewId);
     FView.FitNodeToText(EditTarget);
     PaintBox.Redraw;
   end;
@@ -794,6 +805,70 @@ procedure TfrmMain.mnuRedoClick(Sender: TObject);
 begin
   FView.Redo;
   PaintBox.Redraw;
+end;
+
+procedure TfrmMain.mnuSaveToSBMLClick(Sender: TObject);
+begin
+   ExportSBML;
+end;
+
+procedure TfrmMain.ImportSBML;
+var
+  Dlg : TOpenDialog;
+  SL  : TStringList;
+begin
+  Dlg := TOpenDialog.Create(Self);
+  try
+    Dlg.Title  := 'Import SBML Model';
+    Dlg.Filter := 'SBML files (*.xml;*.sbml)|*.xml;*.sbml|All files (*.*)|*.*';
+    if not Dlg.Execute then Exit;
+
+    SL := TStringList.Create;
+    try
+      SL.LoadFromFile(Dlg.FileName, TEncoding.UTF8);
+      try
+        FView.ImportSBML(SL.Text);
+      except
+        on E: Exception do
+        begin
+          MessageDlg('Error importing SBML:'#13#10 + E.Message,
+                     TMsgDlgType.mtError, [TMsgDlgBtn.mbOK], 0);
+          Exit;
+        end;
+      end;
+    finally
+      SL.Free;
+    end;
+  finally
+    Dlg.Free;
+  end;
+  UpdateScrollBars;
+  UpdateStatusBar;
+  PaintBox.Redraw;
+end;
+
+procedure TfrmMain.ExportSBML;
+var
+  Dlg  : TSaveDialog;
+  SL   : TStringList;
+begin
+  Dlg := TSaveDialog.Create(Self);
+  try
+    Dlg.Title      := 'Export SBML Model';
+    Dlg.DefaultExt := 'xml';
+    Dlg.Filter     := 'SBML files (*.xml)|*.xml|All files (*.*)|*.*';
+    if not Dlg.Execute then Exit;
+
+    SL := TStringList.Create;
+    try
+      SL.Text := FView.ExportSBML;
+      SL.SaveToFile(Dlg.FileName, TEncoding.UTF8);
+    finally
+      SL.Free;
+    end;
+  finally
+    Dlg.Free;
+  end;
 end;
 
 procedure TfrmMain.mnuUndoClick(Sender: TObject);

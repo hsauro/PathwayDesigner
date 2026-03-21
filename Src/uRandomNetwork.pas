@@ -104,7 +104,7 @@ var
     R.IsLinear := True;
 
     KName   := 'k' + IntToStr(AParamNum);
-    RateLaw := KName + '*' + Reactant.DisplayName;
+    RateLaw := KName + '*' + Reactant.Id;
     R.KineticLaw := RateLaw;
 
     if not Assigned(AModel.FindParameterByVar(KName)) then
@@ -178,13 +178,13 @@ begin
 
       // Add reactants
       R.Reactants.Add(TParticipant.Create(Species[ReactIdx], 1.0));
-      RateLaw := RateLaw + '*' + Species[ReactIdx].DisplayName;
+      RateLaw := RateLaw + '*' + Species[ReactIdx].Id;
 
       if NumReactants > 1 then
       begin
         var SecondReact := PickDifferent(ReactIdx);
         R.Reactants.Add(TParticipant.Create(Species[SecondReact], 1.0));
-        RateLaw := RateLaw + '*' + Species[SecondReact].DisplayName;
+        RateLaw := RateLaw + '*' + Species[SecondReact].Id;
       end;
 
       // Add products

@@ -1,5 +1,5 @@
 ﻿{
-  "version": 2,
+  "version": 3,
   "modelName": "",
   "compartments": [
   ],
@@ -49,8 +49,7 @@
   ],
   "species": [
     {
-      "id": "s1",
-      "name": "S1",
+      "id": "S1",
       "x": 107.857612609863,
       "y": 326.309478759766,
       "w": 80.0,
@@ -60,8 +59,7 @@
       "isConstant": false
     },
     {
-      "id": "s2",
-      "name": "S2",
+      "id": "S2",
       "x": 195.931427001953,
       "y": 184.911743164062,
       "w": 80.0,
@@ -71,8 +69,7 @@
       "isConstant": false
     },
     {
-      "id": "s3",
-      "name": "S3",
+      "id": "S3",
       "x": 456.521545410156,
       "y": 161.6083984375,
       "w": 80.0,
@@ -82,8 +79,7 @@
       "isConstant": false
     },
     {
-      "id": "s4",
-      "name": "S4",
+      "id": "S4",
       "x": 735.761474609375,
       "y": 202.40461730957,
       "w": 80.0,
@@ -93,8 +89,7 @@
       "isConstant": false
     },
     {
-      "id": "s5",
-      "name": "S5",
+      "id": "S5",
       "x": 736.150085449219,
       "y": 412.476715087891,
       "w": 80.0,
@@ -104,8 +99,7 @@
       "isConstant": false
     },
     {
-      "id": "s6",
-      "name": "S6",
+      "id": "S6",
       "x": 107.062454223633,
       "y": 494.060028076172,
       "w": 80.0,
@@ -115,8 +109,7 @@
       "isConstant": false
     },
     {
-      "id": "s7",
-      "name": "S7",
+      "id": "S7",
       "x": 393.084716796875,
       "y": 502.686279296875,
       "w": 80.0,
@@ -126,8 +119,7 @@
       "isConstant": false
     },
     {
-      "id": "s8",
-      "name": "S8",
+      "id": "S8",
       "x": 463.386169433594,
       "y": 332.115295410156,
       "w": 80.0,
@@ -149,7 +141,7 @@
       "isJunctionSmooth": true,
       "reactants": [
         {
-          "id": "s1",
+          "id": "S1",
           "stoichiometry": 1.0,
           "ctrl1x": 129.957443237305,
           "ctrl1y": 302.401153564453,
@@ -160,7 +152,7 @@
       ],
       "products": [
         {
-          "id": "s2",
+          "id": "S2",
           "stoichiometry": 1.0,
           "ctrl1x": 214.396820068359,
           "ctrl1y": 236.888031005859,
@@ -181,7 +173,7 @@
       "isJunctionSmooth": true,
       "reactants": [
         {
-          "id": "s2",
+          "id": "S2",
           "stoichiometry": 1.0,
           "ctrl1x": 225.611663818359,
           "ctrl1y": 159.847946166992,
@@ -192,7 +184,7 @@
       ],
       "products": [
         {
-          "id": "s3",
+          "id": "S3",
           "stoichiometry": 1.0,
           "ctrl1x": 351.0,
           "ctrl1y": 96.0,
@@ -213,7 +205,7 @@
       "isJunctionSmooth": true,
       "reactants": [
         {
-          "id": "s3",
+          "id": "S3",
           "stoichiometry": 1.0,
           "ctrl1x": 502.0,
           "ctrl1y": 99.0,
@@ -224,7 +216,7 @@
       ],
       "products": [
         {
-          "id": "s4",
+          "id": "S4",
           "stoichiometry": 1.0,
           "ctrl1x": 606.0,
           "ctrl1y": 94.0,
@@ -245,7 +237,7 @@
       "isJunctionSmooth": true,
       "reactants": [
         {
-          "id": "s4",
+          "id": "S4",
           "stoichiometry": 1.0,
           "ctrl1x": 648.0,
           "ctrl1y": 245.0,
@@ -256,7 +248,7 @@
       ],
       "products": [
         {
-          "id": "s5",
+          "id": "S5",
           "stoichiometry": 1.0,
           "ctrl1x": 582.454650878906,
           "ctrl1y": 345.625305175781,
@@ -277,7 +269,7 @@
       "isJunctionSmooth": false,
       "reactants": [
         {
-          "id": "s5",
+          "id": "S5",
           "stoichiometry": 1.0,
           "ctrl1x": 530.897583007812,
           "ctrl1y": 460.759857177734,
@@ -288,7 +280,7 @@
       ],
       "products": [
         {
-          "id": "s6",
+          "id": "S6",
           "stoichiometry": 1.0,
           "ctrl1x": 511.0,
           "ctrl1y": 662.0,
@@ -309,7 +301,7 @@
       "isJunctionSmooth": true,
       "reactants": [
         {
-          "id": "s7",
+          "id": "S7",
           "stoichiometry": 1.0,
           "ctrl1x": 431.842681884766,
           "ctrl1y": 554.627075195313,
@@ -320,7 +312,7 @@
       ],
       "products": [
         {
-          "id": "s8",
+          "id": "S8",
           "stoichiometry": 1.0,
           "ctrl1x": 516.664855957031,
           "ctrl1y": 463.976745605469,
@@ -341,7 +333,7 @@
       "isJunctionSmooth": true,
       "reactants": [
         {
-          "id": "s1",
+          "id": "S1",
           "stoichiometry": 1.0,
           "ctrl1x": 152.007446289062,
           "ctrl1y": 336.701171875,
@@ -352,7 +344,7 @@
       ],
       "products": [
         {
-          "id": "s8",
+          "id": "S8",
           "stoichiometry": 1.0,
           "ctrl1x": 297.491058349609,
           "ctrl1y": 341.288665771484,
@@ -373,7 +365,7 @@
       "isJunctionSmooth": true,
       "reactants": [
         {
-          "id": "s6",
+          "id": "S6",
           "stoichiometry": 1.0,
           "ctrl1x": 186.390594482422,
           "ctrl1y": 485.739013671875,
@@ -384,7 +376,7 @@
       ],
       "products": [
         {
-          "id": "s7",
+          "id": "S7",
           "stoichiometry": 1.0,
           "ctrl1x": 325.0,
           "ctrl1y": 540.0,

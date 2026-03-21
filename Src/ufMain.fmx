@@ -123,6 +123,12 @@ object frmMain: TfrmMain
       Text = 'Make Nice'
       OnClick = btnMakeNiceClick
     end
+    object Button1: TButton
+      Position.X = 1024.000000000000000000
+      Position.Y = 8.000000000000000000
+      TabOrder = 0
+      Text = 'Button1'
+    end
   end
   object Layout2: TLayout
     Align = Bottom
@@ -376,6 +382,15 @@ object frmMain: TfrmMain
         OnClick = mnuExportAntimonyClick
       end
       object MenuItem1: TMenuItem
+        Locked = True
+        Text = '-'
+      end
+      object mnuSaveToSBML: TMenuItem
+        Locked = True
+        Text = 'Save To SBML'
+        OnClick = mnuSaveToSBMLClick
+      end
+      object MenuItem6: TMenuItem
         Locked = True
         Text = '-'
       end

@@ -119,7 +119,6 @@ type
   TSpeciesNode = class
   private
     FId           : string;
-    FName         : string;
     FCenter       : TPointF;
     FWidth        : Single;
     FHeight       : Single;
@@ -134,11 +133,10 @@ type
     // Visual style
     Style        : TVisualStyle;
 
-    constructor Create(const AId, AName : string;
+    constructor Create(const AId : string;
                        AX, AY, AW, AH   : Single);
 
     property Id           : string       read FId           write FId;
-    property Name         : string       read FName         write FName;
     property Center       : TPointF      read FCenter       write FCenter;
     property Width        : Single       read FWidth        write FWidth;
     property Height       : Single       read FHeight       write FHeight;
@@ -149,7 +147,6 @@ type
     property IsConstant   : Boolean      read FIsConstant   write FIsConstant;
     property Compartment  : string       read FCompartment  write FCompartment;
 
-    function DisplayName : string;
     function IsAlias     : Boolean; inline;
     function HalfW       : Single;  inline;
     function HalfH       : Single;  inline;
@@ -278,7 +275,7 @@ type
     property AssignmentRules : TObjectList<TAssignmentRule>  read FAssignmentRules;
 
     // --- Species factory ---
-    function AddSpecies(const AName : string;
+    function AddSpecies(const Id : string;
                         AX, AY      : Single;
                         AW          : Single = 80;
                         AH          : Single = 36): TSpeciesNode;
@@ -300,7 +297,6 @@ type
 
     // --- Lookup ---
     function FindSpeciesById      (const AId: string): TSpeciesNode;
-    function FindSpeciesByName    (const AName: string): TSpeciesNode;
     function FindReactionById     (const AId: string): TReaction;
     function FindCompartmentById  (const AId: string): TCompartment;
     function FindParameterByVar   (const AVar: string): TParameter;
@@ -322,15 +318,92 @@ type
     procedure SaveToFile    (const AFileName: string);
     procedure LoadFromFile  (const AFileName: string);
 
+    procedure RenameSpeciesId(const AOldId, ANewId: string);
+
     // True when the model contains any compartment other than defaultCompartment
     function HasNonDefaultCompartments: Boolean;
   end;
 
+  function SanitizeSBMLId(const Id: string): string;
+
 implementation
+
+Uses System.Character;
 
 const
   JSON_VERSION = 3;
   DEFAULT_COMPARTMENT = 'defaultCompartment';
+
+function SanitizeSBMLId(const Id: string): string;
+var
+  i: Integer;
+  c: Char;
+begin
+  Result := '';
+
+  if Length(Id) = 0 then
+  begin
+    Result := 'id';
+    Exit;
+  end;
+
+  for i := 1 to Length(Id) do
+  begin
+    c := Id[i];
+    if ((c >= 'a') and (c <= 'z')) or ((c >= 'A') and (c <= 'Z')) or (c = '_') or
+       ((i > 1) and ((c >= '0') and (c <= '9'))) then
+      Result := Result + c
+    else if c = ' ' then
+      Result := Result + '_'
+    else if c = '-' then
+      Result := Result + '_';
+  end;
+
+  // Ensure first character is valid
+  if Length(Result) > 0 then
+  begin
+    c := Result[1];
+    if not (((c >= 'a') and (c <= 'z')) or ((c >= 'A') and (c <= 'Z')) or (c = '_')) then
+      Result := '_' + Result;
+  end
+  else
+    Result := 'id';
+end;
+
+function ReplaceWholeWord(const AText, AOld, ANew: string): string;
+var
+  i    : Integer;
+  Len  : Integer;
+  C    : Char;
+begin
+  Result := AText;
+  Len    := Length(AOld);
+  i      := 1;
+  while i <= Length(Result) - Len + 1 do
+  begin
+    if SameText(Copy(Result, i, Len), AOld) then
+    begin
+      // Check character before match
+      if (i > 1) then
+      begin
+        C := Result[i - 1];
+        if C.IsLetterOrDigit or (C = '_') then begin Inc(i); Continue; end;
+      end;
+      // Check character after match
+      if (i + Len <= Length(Result)) then
+      begin
+        C := Result[i + Len];
+        if C.IsLetterOrDigit or (C = '_') then begin Inc(i); Continue; end;
+      end;
+      // Valid whole-word match — replace
+      Result := Copy(Result, 1, i - 1) + ANew + Copy(Result, i + Len, MaxInt);
+      Inc(i, Length(ANew));
+    end
+    else
+      Inc(i);
+  end;
+end;
+
 
 // ===========================================================================
 //  TVisualStyle
@@ -420,12 +493,11 @@ end;
 //  TSpeciesNode
 // ===========================================================================
 
-constructor TSpeciesNode.Create(const AId, AName : string;
+constructor TSpeciesNode.Create(const AId : string;
                                 AX, AY, AW, AH   : Single);
 begin
   inherited Create;
   FId           := AId;
-  FName         := AName;
   FCenter       := TPointF.Create(AX, AY);
   FWidth        := AW;
   FHeight       := AH;
@@ -438,11 +510,6 @@ begin
   Style        := TVisualStyle.Default;
 end;
 
-function TSpeciesNode.DisplayName: string;
-begin
-  if Assigned(FAliasOf) then Result := FAliasOf.FName
-  else                       Result := FName;
-end;
 
 function TSpeciesNode.IsAlias: Boolean;
 begin
@@ -466,7 +533,6 @@ function TSpeciesNode.ToJSON: TJSONObject;
 begin
   Result := TJSONObject.Create;
   Result.AddPair('id',           FId);
-  Result.AddPair('name',         FName);
   Result.AddPair('x',            TJSONNumber.Create(FCenter.X));
   Result.AddPair('y',            TJSONNumber.Create(FCenter.Y));
   Result.AddPair('w',            TJSONNumber.Create(FWidth));
@@ -506,7 +572,6 @@ var
 begin
   Result := TSpeciesNode.Create(
     AObj.GetValue('id').Value,
-    AObj.GetValue('name').Value,
     GetFloat(AObj, 'x'), GetFloat(AObj, 'y'),
     GetFloat(AObj, 'w', 80), GetFloat(AObj, 'h', 36));
   Result.FInitialValue := GetFloat(AObj, 'initialValue');
@@ -760,10 +825,10 @@ end;
 //  Factories
 // ---------------------------------------------------------------------------
 
-function TBioModel.AddSpecies(const AName : string;
+function TBioModel.AddSpecies(const Id : string;
                               AX, AY, AW, AH : Single): TSpeciesNode;
 begin
-  Result := TSpeciesNode.Create(GenerateId('S'), AName, AX, AY, AW, AH);
+  Result := TSpeciesNode.Create(GenerateId('S'), AX, AY, AW, AH);
   FSpecies.Add(Result);
 end;
 
@@ -773,8 +838,7 @@ var
 begin
   Root           := APrimary;
   if Root.IsAlias then Root := Root.AliasOf;
-  Result         := TSpeciesNode.Create(GenerateId('S'), Root.Name,
-                                        AX, AY, Root.Width, Root.Height);
+  Result         := TSpeciesNode.Create(GenerateId('S'), AX, AY, Root.Width, Root.Height);
   Result.AliasOf := Root;
   FSpecies.Add(Result);
 end;
@@ -839,16 +903,6 @@ var
 begin
   Result := nil;
   for S in FSpecies do if S.Id = AId then Exit(S);
-end;
-
-function TBioModel.FindSpeciesByName(const AName: string): TSpeciesNode;
-var
-  S : TSpeciesNode;
-begin
-  // Returns the first PRIMARY node with this name (ignores aliases)
-  Result := nil;
-  for S in FSpecies do
-    if (not S.IsAlias) and SameText(S.Name, AName) then Exit(S);
 end;
 
 function TBioModel.FindReactionById(const AId: string): TReaction;
@@ -1241,6 +1295,19 @@ begin
   finally
     SL.Free;
   end;
+end;
+
+procedure TBioModel.RenameSpeciesId(const AOldId, ANewId: string);
+var
+  R : TReaction;
+begin
+  // Find and rename the node itself
+  var S := FindSpeciesById(AOldId);
+  if Assigned(S) then S.Id := ANewId;
+
+  // Patch all kinetic laws that reference the old Id
+  for R in FReactions do
+    R.KineticLaw := ReplaceWholeWord(R.KineticLaw, AOldId, ANewId);
 end;
 
 end.

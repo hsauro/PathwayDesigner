@@ -18,7 +18,9 @@ uses
   ufMain in 'Src\ufMain.pas' {frmMain},
   uGeometry in 'Src\uGeometry.pas',
   uRandomNetwork in 'Src\uRandomNetwork.pas',
-  uUndoManager in 'Src\uUndoManager.pas';
+  uUndoManager in 'Src\uUndoManager.pas',
+  uSBMLExport in 'src\uSBMLExport.pas',
+  uSBMLBridge in 'src\uSBMLBridge.pas';
 
 {$R *.res}
 
