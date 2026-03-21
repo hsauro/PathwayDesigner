@@ -22,6 +22,7 @@ uses
   System.Classes,
   System.SysUtils,
   System.UITypes,
+  System.UIConsts,
   System.JSON,
   System.Math,
   System.Generics.Collections,
@@ -54,6 +55,10 @@ const
   VIEW_RING_WIDTH      = 2.5;
   VIEW_ALIAS_OFFSET    = 24.0;
   VIEW_NODE_TEXT_PAD   = 10.0;  // world px padding each side of label inside node
+
+  // Selection halo drawn outside species/compartment nodes
+  VIEW_SEL_RING_OUTSET = 6.0;   // world px gap between node border and halo
+  VIEW_SEL_RING_WIDTH  = 2.0;   // world px stroke width of halo
 
 // ---------------------------------------------------------------------------
 type
@@ -181,6 +186,7 @@ type
     procedure RenderBackground     (const ACanvas: ISkCanvas; W, H: Single);
     procedure RenderReactions      (const ACanvas: ISkCanvas);
     procedure RenderSpeciesNodes   (const ACanvas: ISkCanvas);
+    procedure RenderSelectionHalos (const ACanvas: ISkCanvas);
     procedure RenderJunctionHandles(const ACanvas: ISkCanvas);
     procedure RenderCtrlPtHandles  (const ACanvas: ISkCanvas);
     procedure RenderPendingReaction(const ACanvas: ISkCanvas);
@@ -352,8 +358,9 @@ const
   CLR_BACKGROUND    : TAlphaColor = $FFF8F9FA;
   CLR_NODE_FILL     : TAlphaColor = $FFEEF6FF;
   CLR_NODE_BORDER   : TAlphaColor = $FF4A7FCB;
-  CLR_NODE_FILL_SEL : TAlphaColor = $FFCCE0FF;
-  CLR_NODE_BORD_SEL : TAlphaColor = $FF1144CC;
+  CLR_NODE_FILL_SEL : TAlphaColor = $FFCCE0FF;  // kept for any future use
+  CLR_NODE_BORD_SEL : TAlphaColor = $FF1144CC;  // kept for any future use
+  CLR_SEL_RING      : TAlphaColor = claRed;  // selection halo around nodes
   CLR_ALIAS_FILL    : TAlphaColor = $FFF5F0FF;
   CLR_ALIAS_BORDER  : TAlphaColor = $FF7A6FC8;
   CLR_REACTION      : TAlphaColor = $FF444444;
@@ -2213,14 +2220,23 @@ var
 begin
   for R in FModel.Reactions do
   begin
-    if R.Selected then LineColor := CLR_REACTION_SEL
-    else               LineColor := CLR_REACTION;
+    // Custom style takes priority; selection always overrides line color.
+    if R.Style.HasCustomStyle then
+      LineColor := R.Style.LineColor
+    else
+      LineColor := CLR_REACTION;
+
+    var EffLineWidth := VIEW_LINE_WIDTH;
+    if R.Style.HasCustomStyle and (R.Style.LineWidth > 0) then
+      EffLineWidth := R.Style.LineWidth;
+    if R.Selected then
+      EffLineWidth := EffLineWidth * 1.5;
 
     LinePaint             := TSkPaint.Create;
     LinePaint.AntiAlias   := True;
     LinePaint.Color       := LineColor;
     LinePaint.Style       := TSkPaintStyle.Stroke;
-    LinePaint.StrokeWidth := W2SLen(VIEW_LINE_WIDTH);
+    LinePaint.StrokeWidth := W2SLen(EffLineWidth);
     LinePaint.StrokeCap   := TSkStrokeCap.Round;
 
     // --- Linear UniUni: single straight line, no junction -----------------
@@ -2389,10 +2405,12 @@ begin
 
   for S in FModel.Species do
   begin
-    if S.Selected then
+    // --- Determine colors (custom style takes priority over palette) ---
+    // Selection is indicated purely by the halo — no color overrides here.
+    if S.Style.HasCustomStyle then
     begin
-      FillColor   := CLR_NODE_FILL_SEL;
-      BorderColor := CLR_NODE_BORD_SEL;
+      if S.Style.FillColor   <> 0 then FillColor   := S.Style.FillColor;
+      if S.Style.BorderColor <> 0 then BorderColor := S.Style.BorderColor;
     end
     else if S.IsAlias and FShowAliasIndicator then
     begin
@@ -2415,17 +2433,68 @@ begin
     FillPaint.Style     := TSkPaintStyle.Fill;
     ACanvas.DrawRoundRect(SR, CornerR, CornerR, FillPaint);
 
+    var EffBorderWidth := VIEW_BORDER_WIDTH;
+    if S.Style.HasCustomStyle and (S.Style.BorderWidth > 0) then
+      EffBorderWidth := S.Style.BorderWidth;
+
     BorderPaint             := TSkPaint.Create;
     BorderPaint.AntiAlias   := True;
     BorderPaint.Color       := BorderColor;
     BorderPaint.Style       := TSkPaintStyle.Stroke;
-    BorderPaint.StrokeWidth := W2SLen(VIEW_BORDER_WIDTH);
+    BorderPaint.StrokeWidth := W2SLen(EffBorderWidth);
     if S.IsAlias and FShowAliasIndicator then
       BorderPaint.PathEffect := TSkPathEffect.MakeDash(Intervals, 0);
+    if S.IsBoundary then BorderPaint.StrokeWidth := BorderPaint.StrokeWidth*2.4;
     ACanvas.DrawRoundRect(SR, CornerR, CornerR, BorderPaint);
 
+    var LabelColor := CLR_LABEL;
+    if S.Style.HasCustomStyle and (S.Style.LabelColor <> 0) then
+      LabelColor := S.Style.LabelColor;
+
+    var EffFontSize := VIEW_FONT_SIZE;
+    if S.Style.HasCustomStyle and (S.Style.FontSize > 0) then
+      EffFontSize := S.Style.FontSize;
+
     DrawCenteredText(ACanvas, W2S(S.Center), S.DisplayName,
-                     W2SLen(VIEW_FONT_SIZE), CLR_LABEL);
+                     W2SLen(EffFontSize), LabelColor);
+  end;
+end;
+
+procedure TDiagramView.RenderSelectionHalos(const ACanvas: ISkCanvas);
+// Draw a rounded-rectangle halo just outside each selected species node.
+// This is the sole visual indicator of selection for species/compartments,
+// so node fill and border colors are never touched by selection state.
+var
+  S         : TSpeciesNode;
+  SR        : TRectF;
+  CornerR   : Single;
+  Outset    : Single;
+  RingPaint : ISkPaint;
+  LDashPattern: TArray<Single>;
+begin
+  Outset  := VIEW_SEL_RING_OUTSET;
+  CornerR := W2SLen(VIEW_NODE_CORNER + Outset);
+
+  RingPaint             := TSkPaint.Create;
+  RingPaint.AntiAlias   := True;
+  RingPaint.Style       := TSkPaintStyle.Stroke;
+  RingPaint.StrokeWidth := W2SLen(VIEW_SEL_RING_WIDTH);
+  RingPaint.Color       := CLR_SEL_RING;
+
+  SetLength(LDashPattern, 2);
+  LDashPattern[0] := 10;
+  LDashPattern[1] := 5;
+  RingPaint.PathEffect := TSkPathEffect.MakeDash(LDashPattern, 2);
+
+  for S in FModel.Species do
+  begin
+    if not S.Selected then Continue;
+    SR := TRectF.Create(
+      W2S(TPointF.Create(S.Center.X - S.HalfW - Outset,
+                         S.Center.Y - S.HalfH - Outset)),
+      W2S(TPointF.Create(S.Center.X + S.HalfW + Outset,
+                         S.Center.Y + S.HalfH + Outset)));
+    ACanvas.DrawRoundRect(SR, CornerR, CornerR, RingPaint);
   end;
 end;
 
@@ -2446,10 +2515,23 @@ begin
     // has no useful function when the junction is constrained to the line.
     if R.IsLinear and (R.Reactants.Count = 1) and (R.Products.Count = 1) then
       Continue;
-    if R.Selected then
-    begin FillColor := CLR_JCT_FILL_SEL; BorderColor := CLR_JCT_BORD_SEL; end
+
+    // Resolve fill color once regardless of selection state.
+    if R.Style.HasCustomStyle and (R.Style.JunctionColor <> 0) then
+      FillColor := R.Style.JunctionColor
     else
-    begin FillColor := CLR_JCT_FILL;     BorderColor := CLR_JCT_BORDER;   end;
+      FillColor := CLR_JCT_FILL;
+
+    if R.Selected then
+    begin
+      Radius      := W2SLen(VIEW_JUNCTION_RADIUS * 1.6);
+      BorderColor := CLR_JCT_BORD_SEL;
+    end
+    else
+    begin
+      Radius      := W2SLen(VIEW_JUNCTION_RADIUS);
+      BorderColor := CLR_JCT_BORDER;
+    end;
 
     JScr := W2S(EffectiveJunctionPos(R));
 
@@ -2779,6 +2861,7 @@ begin
   RenderBackground     (ACanvas, ACanvasW, ACanvasH);
   RenderReactions      (ACanvas);
   RenderSpeciesNodes   (ACanvas);
+  RenderSelectionHalos (ACanvas);
   RenderJunctionHandles(ACanvas);
   RenderCtrlPtHandles  (ACanvas);   // on top of junction handles
   RenderPendingReaction(ACanvas);

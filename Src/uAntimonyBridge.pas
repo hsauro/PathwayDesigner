@@ -6,28 +6,38 @@
   Translates between TAntimonyModel (from the Antimony parser) and TBioModel
   (the application's native model).
 
+  Id vs Name
+  ----------
+  In SBML/Antimony, Id is the unique biochemical identifier (e.g. 'S1', 'ATP').
+  Name is an optional human-readable label that need not be unique; Antimony
+  does not use it.  All export code therefore uses S.Id / Part.Species.Id.
+
+  TBioModel.AddSpecies auto-generates a diagram-internal Id via GenerateId('s')
+  and stores the passed string in Name.  On import the bridge immediately
+  overwrites Node.Id with the biochemical identifier from the Antimony model,
+  which is the correct field for all downstream use.
+
   Import pipeline
   ---------------
-  1. Call TAntimony.ParseFromString  → TAntimonyModel
+  1. Call TAntimony.ParseFromString  -> TAntimonyModel
   2. Copy compartments, parameters, assignment rules into TBioModel
-  3. Create TSpeciesNode for each TAntimonySpecies using auto-layout
+  3. Create TSpeciesNode for each TAntimonySpecies; fix Id immediately
   4. Create TReaction for each TAntimonyReaction, wire participants
   5. Auto-layout positions species/junctions sensibly
 
-  Auto-layout strategy
-  --------------------
-  Reactions are laid out in rows, top to bottom, with a fixed vertical pitch.
-  For each reaction:
-    - Reactants are placed in a column at X = LEFT_MARGIN, centred on the row.
-    - Products  are placed in a column at X = RIGHT_MARGIN, centred on the row.
-    - The junction sits at X = MID_X, Y = row centre.
-  Species that appear in multiple reactions are placed at their FIRST encounter
-  position and reused — alias creation from import is left as a future feature.
+  Case handling
+  -------------
+  Antimony files sometimes mix the casing of a species declaration
+  (e.g. "species s1") with its use in reactions ("S1 => S2").
+  CanonicalId() resolves any reaction reference back to the declared
+  spelling via a case-insensitive FindSpecies lookup, so the declared
+  form is always used as the Id and no identifier is ever renamed.
+  NOTE: TAntimonyModel.FindSpecies must use SameText for this to work.
 
   Export pipeline
   ---------------
   Primary species nodes only (aliases have no independent biochemical identity).
-  Reactions reference species by DisplayName so aliases resolve correctly.
+  All identifiers are taken from Id, preserving declared casing exactly.
   Output is a plain Antimony text string.
 
   Compartment handling
@@ -50,7 +60,7 @@ uses
 type
   TAntimonyBridge = class
   public
-    // Import Antimony source text → populate AModel (clears existing content).
+    // Import Antimony source text -> populate AModel (clears existing content).
     // Raises EAntimonyParseError on parse failure.
     class procedure ImportFromString(const ASource: string;
                                      AModel: TBioModel);
@@ -59,7 +69,7 @@ type
     class procedure ImportFromFile(const AFileName: string;
                                    AModel: TBioModel);
 
-    // Export AModel → Antimony text string.
+    // Export AModel -> Antimony text string.
     class function ExportToString(AModel: TBioModel): string;
 
     // Export to file.
@@ -72,55 +82,67 @@ implementation
 //  Layout constants (world pixels)
 // ===========================================================================
 const
-  NODE_W          = 80;
-  NODE_H          = 36;
-  ROW_PITCH       = 120;    // vertical distance between reaction rows
-  LEFT_MARGIN     = 100;    // X centre of reactant column
-  RIGHT_MARGIN    = 480;    // X centre of product  column
-  MID_X           = 290;    // X of junction point
-  TOP_MARGIN      = 80;     // Y of first row centre
-  SPECIES_PITCH   = 60;     // vertical gap between species in the same column
+  NODE_W        = 80;
+  NODE_H        = 36;
+  ROW_PITCH     = 120;   // vertical distance between reaction rows
+  LEFT_MARGIN   = 100;   // X centre of reactant column
+  RIGHT_MARGIN  = 480;   // X centre of product column
+  MID_X         = 290;   // X of junction point
+  TOP_MARGIN    = 80;    // Y of first row centre
+  SPECIES_PITCH = 60;    // vertical gap between species in the same column
 
 // ===========================================================================
 //  Import helpers
 // ===========================================================================
 
-// Place a column of N species centred on RowCentreY, starting at ColX.
+// Place a column of N species centred on RowCentreY.
 // Returns the Y of the topmost node in the column.
 function ColumnTopY(N: Integer; RowCentreY: Single): Single;
 begin
-  // Total height occupied = (N-1) * SPECIES_PITCH
-  // Centre of column = RowCentreY  →  top = centre - half of total height
   if N <= 1 then
     Result := RowCentreY
   else
     Result := RowCentreY - ((N - 1) * SPECIES_PITCH * 0.5);
 end;
 
+// Returns the canonical (declared) spelling for a species name, using a
+// case-insensitive search so that "S1" in a reaction resolves to "s1" from
+// a declaration.  If no declaration is found the name is returned unchanged.
+function CanonicalId(AntModel: TAntimonyModel; const AName: string): string;
+var
+  Idx: Integer;
+begin
+  Idx := AntModel.FindSpecies(AName);   // must use SameText internally
+  if Idx >= 0 then
+    Result := AntModel.Species[Idx].Id  // declared spelling
+  else
+    Result := AName;
+end;
+
 // ===========================================================================
-//  TAntimonyBridge — Import
+//  TAntimonyBridge - Import
 // ===========================================================================
 
 class procedure TAntimonyBridge.ImportFromString(const ASource: string;
                                                   AModel: TBioModel);
 var
-  AntModel    : TAntimonyModel;
-  Placed      : TDictionary<string, TSpeciesNode>;  // name → first-placed node
-  RowIndex    : Integer;
-  RowCY       : Single;
-  i, j        : Integer;
-  AntSpec     : TAntimonySpecies;
-  AntRct      : TAntimonyReaction;
-  AntComp     : TAntimonyCompartment;
-  AntAssign   : TAntimonyAssignment;
-  AntRule     : TAntimonyAssignmentRule;
-  Part        : TParticipant;
-  PartNode    : TSpeciesNode;
-  Reaction    : TReaction;
+  AntModel      : TAntimonyModel;
+  Placed        : TDictionary<string, TSpeciesNode>;  // biochemical Id -> node
+  RowIndex      : Integer;
+  RowCY         : Single;
+  i, j          : Integer;
+  AntSpec       : TAntimonySpecies;
+  AntRct        : TAntimonyReaction;
+  AntComp       : TAntimonyCompartment;
+  AntAssign     : TAntimonyAssignment;
+  AntRule       : TAntimonyAssignmentRule;
+  PartNode      : TSpeciesNode;
+  Reaction      : TReaction;
   NReact, NProd : Integer;
-  CY          : Single;
-  Stoich      : Double;
-  JX, JY      : Single;
+  CY            : Single;
+  JX, JY        : Single;
+  AntS          : Integer;
+  CanName       : string;
 begin
   AntModel := TAntimony.ParseFromString(ASource);
   try
@@ -134,11 +156,10 @@ begin
       AModel.AddCompartment(AntComp.Id, AntComp.Size, AntComp.Dimensions);
     end;
 
-    // --- Parameters (assignments that are not species initial values) ---
+    // --- Parameters: assignments whose variable is not a species ---
     for i := 0 to AntModel.Assignments.Count - 1 do
     begin
       AntAssign := AntModel.Assignments[i];
-      // If the name matches a species it is an initial value, not a parameter
       if AntModel.FindSpecies(AntAssign.Variable) < 0 then
         AModel.AddParameter(AntAssign.Variable, AntAssign.Expression);
     end;
@@ -150,155 +171,138 @@ begin
       AModel.AddAssignmentRule(AntRule.Variable, AntRule.Expression);
     end;
 
-    // --- Species initial values from Assignments ---
-    // We need these later when creating TSpeciesNode objects.
-    // Build a quick lookup: speciesName → initial value string
-    var SpeciesInitVal := TDictionary<string, Double>.Create;
+    // --- Species nodes ---
+    // AddSpecies auto-generates a diagram-internal Id via GenerateId('s') and
+    // stores our passed string in Name.  We immediately overwrite Node.Id with
+    // the biochemical identifier so it is in the correct field for all
+    // downstream use (export, JSON persistence, reaction wiring, etc.).
+    // The Placed dictionary is keyed on the canonical biochemical Id.
+    Placed   := TDictionary<string, TSpeciesNode>.Create;
+    RowIndex := 0;
     try
-      for i := 0 to AntModel.Assignments.Count - 1 do
+      // First pass: create nodes for all explicitly declared species.
+      for i := 0 to AntModel.Species.Count - 1 do
       begin
-        AntAssign := AntModel.Assignments[i];
-        if AntModel.FindSpecies(AntAssign.Variable) >= 0 then
-          if AntAssign.IsSimpleValue then
-            SpeciesInitVal.AddOrSetValue(AntAssign.Variable,
-                                         AntAssign.GetNumericValue);
-      end;
-
-      // --- Species nodes — created lazily during reaction layout ---
-      // We lay out species as we encounter them in reactions.
-      Placed   := TDictionary<string, TSpeciesNode>.Create;
-      RowIndex := 0;
-
-      try
-        // First pass: create all species that don't appear in any reaction
-        // so they still exist in the model even if isolated.
-        for i := 0 to AntModel.Species.Count - 1 do
+        AntSpec := AntModel.Species[i];
+        if not Placed.ContainsKey(AntSpec.Id) then
         begin
-          AntSpec := AntModel.Species[i];
-          if not Placed.ContainsKey(AntSpec.Id) then
-          begin
-            RowCY    := TOP_MARGIN + RowIndex * ROW_PITCH;
-            //var Node := AModel.AddSpecies(AntSpec.Id, LEFT_MARGIN, RowCY, NODE_W, NODE_H);
-            var Node := AModel.AddSpecies(AntSpec.Id, trunc (Random()*600), trunc (Random()*600));
-            Node.IsBoundary  := AntSpec.IsBoundary;
-            Node.IsConstant  := AntSpec.IsConstant;
-            Node.Compartment := AntSpec.Compartment;
-            var InitVal: Double;
-            if SpeciesInitVal.TryGetValue(AntSpec.Id, InitVal) then
-              Node.InitialValue := InitVal;
-            Placed.Add(AntSpec.Id, Node);
-            Inc (RowIndex);
-          end;
-        end;
-
-        // Reset row index for reaction layout
-        RowIndex := 0;
-
-        // --- Reactions ---
-        for i := 0 to AntModel.Reactions.Count - 1 do
-        begin
-          AntRct  := AntModel.Reactions[i];
-          NReact  := AntRct.Reactants.Count;
-          NProd   := AntRct.Products.Count;
-          RowCY   := TOP_MARGIN + RowIndex * ROW_PITCH;
-
-          // Place any unplaced reactant species
-          CY := ColumnTopY(NReact, RowCY);
-          for j := 0 to NReact - 1 do
-          begin
-            var Participant := AntRct.Reactants[j];
-            if not Placed.ContainsKey(Participant.SpeciesName) then
-            begin
-              var Node := AModel.AddSpecies(Participant.SpeciesName,
-                            LEFT_MARGIN, CY, NODE_W, NODE_H);
-              var AntS := AntModel.FindSpecies(Participant.SpeciesName);
-              if AntS >= 0 then
-              begin
-                Node.IsBoundary  := AntModel.Species[AntS].IsBoundary;
-                Node.IsConstant  := AntModel.Species[AntS].IsConstant;
-                Node.Compartment := AntModel.Species[AntS].Compartment;
-              end;
-              var InitVal: Double;
-              if SpeciesInitVal.TryGetValue(Participant.SpeciesName, InitVal) then
-                Node.InitialValue := InitVal;
-              Placed.Add(Participant.SpeciesName, Node);
-            end;
-            CY := CY + SPECIES_PITCH;
-          end;
-
-          // Place any unplaced product species
-          CY := ColumnTopY(NProd, RowCY);
-          for j := 0 to NProd - 1 do
-          begin
-            var Participant := AntRct.Products[j];
-            if not Placed.ContainsKey(Participant.SpeciesName) then
-            begin
-              var Node := AModel.AddSpecies(Participant.SpeciesName,
-                            RIGHT_MARGIN, CY, NODE_W, NODE_H);
-              var AntS := AntModel.FindSpecies(Participant.SpeciesName);
-              if AntS >= 0 then
-              begin
-                Node.IsBoundary  := AntModel.Species[AntS].IsBoundary;
-                Node.IsConstant  := AntModel.Species[AntS].IsConstant;
-                Node.Compartment := AntModel.Species[AntS].Compartment;
-              end;
-              var InitVal: Double;
-              if SpeciesInitVal.TryGetValue(Participant.SpeciesName, InitVal) then
-                Node.InitialValue := InitVal;
-              Placed.Add(Participant.SpeciesName, Node);
-            end;
-            CY := CY + SPECIES_PITCH;
-          end;
-
-          // Compute junction position — midpoint between reactant and product centroids
-          var SumRX : Single := 0; var SumRY : Single := 0;
-          for j := 0 to NReact - 1 do
-          begin
-            var N := Placed[AntRct.Reactants[j].SpeciesName];
-            SumRX := SumRX + N.Center.X;
-            SumRY := SumRY + N.Center.Y;
-          end;
-          var SumPX : Single := 0; var SumPY : Single := 0;
-          for j := 0 to NProd - 1 do
-          begin
-            var N := Placed[AntRct.Products[j].SpeciesName];
-            SumPX := SumPX + N.Center.X;
-            SumPY := SumPY + N.Center.Y;
-          end;
-          if NReact > 0 then begin SumRX := SumRX / NReact; SumRY := SumRY / NReact; end
-          else begin SumRX := LEFT_MARGIN; SumRY := RowCY; end;
-          if NProd > 0  then begin SumPX := SumPX / NProd;  SumPY := SumPY / NProd;  end
-          else begin SumPX := RIGHT_MARGIN; SumPY := RowCY; end;
-
-          JX := (SumRX + SumPX) * 0.5;
-          JY := (SumRY + SumPY) * 0.5;
-
-          Reaction := AModel.AddReaction(JX, JY);
-          Reaction.KineticLaw   := AntRct.KineticLaw;
-          Reaction.IsReversible := AntRct.IsReversible;
-          if AntRct.Id <> '' then Reaction.Id := AntRct.Id;
-
-          for j := 0 to NReact - 1 do
-          begin
-            PartNode := Placed[AntRct.Reactants[j].SpeciesName];
-            Reaction.Reactants.Add(
-              TParticipant.Create(PartNode, AntRct.Reactants[j].Stoichiometry));
-          end;
-          for j := 0 to NProd - 1 do
-          begin
-            PartNode := Placed[AntRct.Products[j].SpeciesName];
-            Reaction.Products.Add(
-              TParticipant.Create(PartNode, AntRct.Products[j].Stoichiometry));
-          end;
-
+          RowCY    := TOP_MARGIN + RowIndex * ROW_PITCH;
+          var Node := AModel.AddSpecies(AntSpec.Id,
+                        trunc(Random() * 600), trunc(Random() * 600));
+          Node.Id           := AntSpec.Id;   // overwrite auto-generated diagram Id
+          Node.IsBoundary   := AntSpec.IsBoundary;
+          Node.IsConstant   := AntSpec.IsConstant;
+          Node.Compartment  := AntSpec.Compartment;
+          Node.InitialValue := AntSpec.InitialValue;
+          Placed.Add(AntSpec.Id, Node);
           Inc(RowIndex);
         end;
-
-      finally
-        Placed.Free;
       end;
+
+      RowIndex := 0;
+
+      // --- Reactions ---
+      for i := 0 to AntModel.Reactions.Count - 1 do
+      begin
+        AntRct := AntModel.Reactions[i];
+        NReact := AntRct.Reactants.Count;
+        NProd  := AntRct.Products.Count;
+        RowCY  := TOP_MARGIN + RowIndex * ROW_PITCH;
+
+        // Place any unplaced reactant species.
+        // Resolve each participant name to its declared canonical spelling first.
+        CY := ColumnTopY(NReact, RowCY);
+        for j := 0 to NReact - 1 do
+        begin
+          CanName := CanonicalId(AntModel, AntRct.Reactants[j].SpeciesName);
+          if not Placed.ContainsKey(CanName) then
+          begin
+            var Node := AModel.AddSpecies(CanName, LEFT_MARGIN, CY, NODE_W, NODE_H);
+            Node.Id := CanName;   // overwrite auto-generated diagram Id
+            AntS    := AntModel.FindSpecies(CanName);
+            if AntS >= 0 then
+            begin
+              Node.IsBoundary   := AntModel.Species[AntS].IsBoundary;
+              Node.IsConstant   := AntModel.Species[AntS].IsConstant;
+              Node.Compartment  := AntModel.Species[AntS].Compartment;
+              Node.InitialValue := AntModel.Species[AntS].InitialValue;
+            end;
+            Placed.Add(CanName, Node);
+          end;
+          CY := CY + SPECIES_PITCH;
+        end;
+
+        // Place any unplaced product species.
+        CY := ColumnTopY(NProd, RowCY);
+        for j := 0 to NProd - 1 do
+        begin
+          CanName := CanonicalId(AntModel, AntRct.Products[j].SpeciesName);
+          if not Placed.ContainsKey(CanName) then
+          begin
+            var Node := AModel.AddSpecies(CanName, RIGHT_MARGIN, CY, NODE_W, NODE_H);
+            Node.Id := CanName;   // overwrite auto-generated diagram Id
+            AntS    := AntModel.FindSpecies(CanName);
+            if AntS >= 0 then
+            begin
+              Node.IsBoundary   := AntModel.Species[AntS].IsBoundary;
+              Node.IsConstant   := AntModel.Species[AntS].IsConstant;
+              Node.Compartment  := AntModel.Species[AntS].Compartment;
+              Node.InitialValue := AntModel.Species[AntS].InitialValue;
+            end;
+            Placed.Add(CanName, Node);
+          end;
+          CY := CY + SPECIES_PITCH;
+        end;
+
+        // Junction position - midpoint between reactant and product centroids.
+        var SumRX: Single := 0;
+        var SumRY: Single := 0;
+        for j := 0 to NReact - 1 do
+        begin
+          var N := Placed[CanonicalId(AntModel, AntRct.Reactants[j].SpeciesName)];
+          SumRX := SumRX + N.Center.X;
+          SumRY := SumRY + N.Center.Y;
+        end;
+        var SumPX: Single := 0;
+        var SumPY: Single := 0;
+        for j := 0 to NProd - 1 do
+        begin
+          var N := Placed[CanonicalId(AntModel, AntRct.Products[j].SpeciesName)];
+          SumPX := SumPX + N.Center.X;
+          SumPY := SumPY + N.Center.Y;
+        end;
+
+        if NReact > 0 then begin SumRX := SumRX / NReact; SumRY := SumRY / NReact; end
+        else               begin SumRX := LEFT_MARGIN;     SumRY := RowCY;          end;
+        if NProd  > 0 then begin SumPX := SumPX / NProd;  SumPY := SumPY / NProd;  end
+        else               begin SumPX := RIGHT_MARGIN;    SumPY := RowCY;          end;
+
+        JX := (SumRX + SumPX) * 0.5;
+        JY := (SumRY + SumPY) * 0.5;
+
+        Reaction := AModel.AddReaction(JX, JY);
+        Reaction.KineticLaw   := AntRct.KineticLaw;
+        Reaction.IsReversible := AntRct.IsReversible;
+        if AntRct.Id <> '' then Reaction.Id := AntRct.Id;
+
+        for j := 0 to NReact - 1 do
+        begin
+          PartNode := Placed[CanonicalId(AntModel, AntRct.Reactants[j].SpeciesName)];
+          Reaction.Reactants.Add(
+            TParticipant.Create(PartNode, AntRct.Reactants[j].Stoichiometry));
+        end;
+        for j := 0 to NProd - 1 do
+        begin
+          PartNode := Placed[CanonicalId(AntModel, AntRct.Products[j].SpeciesName)];
+          Reaction.Products.Add(
+            TParticipant.Create(PartNode, AntRct.Products[j].Stoichiometry));
+        end;
+
+        Inc(RowIndex);
+      end;
+
     finally
-      SpeciesInitVal.Free;
+      Placed.Free;
     end;
   finally
     AntModel.Free;
@@ -320,7 +324,7 @@ begin
 end;
 
 // ===========================================================================
-//  TAntimonyBridge — Export
+//  TAntimonyBridge - Export
 // ===========================================================================
 
 class function TAntimonyBridge.ExportToString(AModel: TBioModel): string;
@@ -337,12 +341,6 @@ var
 begin
   Lines := TStringList.Create;
   try
-//    if AModel.ModelName <> '' then
-//      Lines.Add('model ' + AModel.ModelName)
-//    else
-//      Lines.Add('model bioNetworkModel');
-//    Lines.Add('');
-
     // --- Compartments (skip defaultCompartment) ---
     var HasComps := False;
     for C in AModel.Compartments do
@@ -357,7 +355,8 @@ begin
       end;
     if HasComps then Lines.Add('');
 
-    // --- Species (primary nodes only) ---
+    // --- Species declarations (primary nodes only) ---
+    // Id is the SBML unique identifier and the correct field for Antimony output.
     var HasSpec := False;
     for S in AModel.Species do
     begin
@@ -370,50 +369,44 @@ begin
       var Prefix := '';
       if S.IsBoundary then Prefix := '$';
       if S.Compartment <> '' then
-        Lines.Add(Format('  species %s%s in %s = %g;',
-          [Prefix, S.Name, S.Compartment, S.InitialValue]))
+        Lines.Add(Format('  species %s%s in %s;', [Prefix, S.Id, S.Compartment]))
       else
-        Lines.Add(Format('  species %s%s = %g;',
-          [Prefix, S.Name, S.InitialValue]));
+        Lines.Add(Format('  species %s%s;', [Prefix, S.Id]));
     end;
     if HasSpec then Lines.Add('');
 
     // --- Reactions ---
+    // Use Part.Species.Id — the unique SBML identifier, preserved from import.
     if AModel.Reactions.Count > 0 then
     begin
       Lines.Add('  // Reactions');
       for R in AModel.Reactions do
       begin
-        // Reaction id
         ReactionStr := '  ' + R.Id + ': ';
 
-        // Reactants
         for i := 0 to R.Reactants.Count - 1 do
         begin
           Part := R.Reactants[i];
           if i > 0 then ReactionStr := ReactionStr + ' + ';
           if Abs(Part.Stoichiometry - 1.0) > 1e-9 then
             ReactionStr := ReactionStr + FloatToStr(Part.Stoichiometry) + ' ';
-          ReactionStr := ReactionStr + Part.Species.DisplayName;
+          ReactionStr := ReactionStr + Part.Species.Id;
         end;
 
-        // Arrow
         if R.IsReversible then
           ReactionStr := ReactionStr + ' -> '
         else
           ReactionStr := ReactionStr + ' => ';
 
-        // Products
         for i := 0 to R.Products.Count - 1 do
         begin
           Part := R.Products[i];
           if i > 0 then ReactionStr := ReactionStr + ' + ';
           if Abs(Part.Stoichiometry - 1.0) > 1e-9 then
             ReactionStr := ReactionStr + FloatToStr(Part.Stoichiometry) + ' ';
-          ReactionStr := ReactionStr + Part.Species.DisplayName;
+          ReactionStr := ReactionStr + Part.Species.Id;
         end;
 
-        // Kinetic law — default to 'v' when none is set
         if R.KineticLaw <> '' then
           ReactionStr := ReactionStr + '; ' + R.KineticLaw
         else
@@ -433,6 +426,19 @@ begin
       Lines.Add('');
     end;
 
+    // --- Species initial values ---
+    // Guard on Species.Count (the original code incorrectly used Parameters.Count).
+    if AModel.Species.Count > 0 then
+    begin
+      Lines.Add('  // Species initial values');
+      for S in AModel.Species do
+      begin
+        if S.IsAlias then Continue;
+        Lines.Add(Format('  %s = %g;', [S.Id, S.InitialValue]));
+      end;
+      Lines.Add('');
+    end;
+
     // --- Assignment rules ---
     if AModel.AssignmentRules.Count > 0 then
     begin
@@ -442,7 +448,6 @@ begin
       Lines.Add('');
     end;
 
-    //Lines.Add('end');
     Result := Lines.Text;
   finally
     Lines.Free;

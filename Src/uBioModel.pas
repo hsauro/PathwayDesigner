@@ -13,6 +13,12 @@
                     carrying stoichiometry per participant
   TBioModel       + ModelName, Compartments, Parameters, AssignmentRules
 
+  Version 3 additions
+  -------------------
+  TVisualStyle record added; carried by TSpeciesNode, TReaction, TCompartment.
+  When HasCustomStyle = False the renderer falls back to the global CLR_*
+  palette, so v2 files load and display identically to before.
+
   New classes
   -----------
   TParticipant  — (Species ref, Stoichiometry)  owned by TReaction
@@ -31,6 +37,7 @@
   --------------------
   v1  plain TSpeciesNode lists in reactants/products (no stoichiometry)
   v2  TParticipant lists; biochemical fields; compartments; parameters
+  v3  TVisualStyle per entity (optional; absent = default palette)
 }
 
 interface
@@ -41,12 +48,47 @@ uses
   System.Generics.Collections,
   System.JSON,
   System.Types,
+  System.UITypes,
   System.Math;
 
 type
   TSpeciesNode      = class;
   TReaction         = class;
   TParticipant = class;
+
+// ===========================================================================
+//  TVisualStyle
+//  Carried by TSpeciesNode, TReaction, and TCompartment.
+//  When HasCustomStyle = False the renderer falls back to the global CLR_*
+//  palette, so existing diagrams look identical until a user edits a style.
+//
+//  Field applicability by entity type:
+//    Species     — FillColor, BorderColor, LabelColor, BorderWidth, FontSize
+//    Reaction    — LineColor, LineWidth
+//    Compartment — FillColor, BorderColor, BorderWidth
+//  Unused fields for a given entity are stored but silently ignored.
+//
+//  FontSize = 0 and BorderWidth = 0 mean "use the global default".
+// ===========================================================================
+  TVisualStyle = record
+    HasCustomStyle : Boolean;
+    FillColor      : TAlphaColor;  // node/compartment fill
+    BorderColor    : TAlphaColor;  // node/compartment border
+    LabelColor     : TAlphaColor;  // species label text
+    BorderWidth    : Single;       // species/compartment border stroke width (0 = default)
+    LineColor      : TAlphaColor;  // reaction line/arrowhead
+    LineWidth      : Single;       // reaction stroke width (0 = default)
+    FontSize       : Single;       // species label font size (0 = global default)
+    JunctionColor  : TAlphaColor;  // reaction junction handle fill
+
+    // Returns a zeroed record with HasCustomStyle = False.
+    class function Default: TVisualStyle; static;
+
+    // Serialise — only called when HasCustomStyle = True.
+    function  ToJSON: TJSONObject;
+    // Deserialise — sets HasCustomStyle := True.
+    procedure FromJSON(AObj: TJSONObject);
+  end;
 
 // ===========================================================================
 //  TParticipant
@@ -57,8 +99,8 @@ type
   private
     FSpecies       : TSpeciesNode;
     FStoichiometry : Double;
-    FCtrl1         : TPointF;   // Bézier control point near the species end
-    FCtrl2         : TPointF;   // Bézier control point near the junction end
+    FCtrl1         : TPointF;   // Bezier control point near the species end
+    FCtrl2         : TPointF;   // Bezier control point near the junction end
     FCtrlPtsSet    : Boolean;   // False = auto-compute; True = user-placed
   public
     constructor Create(ASpecies: TSpeciesNode; AStoichiometry: Double = 1.0);
@@ -67,7 +109,7 @@ type
     property Ctrl1         : TPointF      read FCtrl1         write FCtrl1;
     property Ctrl2         : TPointF      read FCtrl2         write FCtrl2;
     property CtrlPtsSet    : Boolean      read FCtrlPtsSet    write FCtrlPtsSet;
-    // Clear manual control points — next render auto-computes them
+    // Clear manual control points -- next render auto-computes them
     procedure ResetCtrlPts;
   end;
 
@@ -89,6 +131,9 @@ type
     FIsConstant   : Boolean;
     FCompartment  : string;
   public
+    // Visual style
+    Style        : TVisualStyle;
+
     constructor Create(const AId, AName : string;
                        AX, AY, AW, AH   : Single);
 
@@ -127,9 +172,12 @@ type
     FKineticLaw  : string;
     FIsReversible    : Boolean;
     FIsLinear        : Boolean;
-    FIsBezier        : Boolean;   // True = render legs as cubic Bézier curves
+    FIsBezier        : Boolean;   // True = render legs as cubic Bezier curves
     FIsJunctionSmooth: Boolean;   // True = collinear inner handles (C1 at junction)
   public
+    // Visual style
+    FStyle           : TVisualStyle;
+
     constructor Create(const AId : string; AJX, AJY : Single);
     destructor  Destroy; override;
 
@@ -143,6 +191,7 @@ type
     property IsLinear        : Boolean read FIsLinear        write FIsLinear;
     property IsBezier        : Boolean read FIsBezier        write FIsBezier;
     property IsJunctionSmooth: Boolean read FIsJunctionSmooth write FIsJunctionSmooth;
+    property Style           : TVisualStyle read FStyle write FStyle;
 
     function ReactantSpecies(AIndex: Integer): TSpeciesNode;
     function ProductSpecies (AIndex: Integer): TSpeciesNode;
@@ -159,11 +208,15 @@ type
     FSize       : Double;
     FDimensions : Integer;
   public
+    // Visual style
+    FStyle      : TVisualStyle;
+
     constructor Create(const AId: string; ASize: Double = 1.0;
                        ADimensions: Integer = 3);
-    property Id         : string  read FId         write FId;
-    property Size       : Double  read FSize       write FSize;
-    property Dimensions : Integer read FDimensions write FDimensions;
+    property Id         : string       read FId         write FId;
+    property Size       : Double       read FSize       write FSize;
+    property Dimensions : Integer      read FDimensions write FDimensions;
+    property Style      : TVisualStyle read FStyle      write FStyle;
     function ToJSON: TJSONObject;
     class function FromJSON(AObj: TJSONObject): TCompartment;
   end;
@@ -276,8 +329,70 @@ type
 implementation
 
 const
-  JSON_VERSION = 2;
+  JSON_VERSION = 3;
   DEFAULT_COMPARTMENT = 'defaultCompartment';
+
+// ===========================================================================
+//  TVisualStyle
+// ===========================================================================
+
+class function TVisualStyle.Default: TVisualStyle;
+begin
+  Result.HasCustomStyle := False;
+  Result.FillColor      := 0;
+  Result.BorderColor    := 0;
+  Result.LabelColor     := 0;
+  Result.BorderWidth    := 0;
+  Result.LineColor      := 0;
+  Result.LineWidth      := 0;
+  Result.FontSize       := 0;
+  Result.JunctionColor  := 0;
+end;
+
+function TVisualStyle.ToJSON: TJSONObject;
+begin
+  Result := TJSONObject.Create;
+  // Colors are TAlphaColor (Cardinal/UInt32). Cast through Integer so that
+  // TJSONNumber receives a signed 32-bit value and round-trips correctly.
+  Result.AddPair('fillColor',   TJSONNumber.Create(Integer(FillColor)));
+  Result.AddPair('borderColor', TJSONNumber.Create(Integer(BorderColor)));
+  Result.AddPair('labelColor',  TJSONNumber.Create(Integer(LabelColor)));
+  Result.AddPair('borderWidth', TJSONNumber.Create(BorderWidth));
+  Result.AddPair('lineColor',   TJSONNumber.Create(Integer(LineColor)));
+  Result.AddPair('lineWidth',   TJSONNumber.Create(LineWidth));
+  Result.AddPair('fontSize',    TJSONNumber.Create(FontSize));
+  Result.AddPair('junctionColor', TJSONNumber.Create(Integer(JunctionColor)));
+end;
+
+procedure TVisualStyle.FromJSON(AObj: TJSONObject);
+
+  function GetColor(const K: string): TAlphaColor;
+  var V: TJSONValue;
+  begin
+    V := AObj.GetValue(K);
+    if Assigned(V) then Result := TAlphaColor((V as TJSONNumber).AsInt)
+    else                Result := 0;
+  end;
+
+  function GetFloat(const K: string): Single;
+  var V: TJSONValue;
+  begin
+    V := AObj.GetValue(K);
+    if Assigned(V) then Result := (V as TJSONNumber).AsDouble
+    else                Result := 0;
+  end;
+
+begin
+  HasCustomStyle := True;
+  FillColor      := GetColor('fillColor');
+  BorderColor    := GetColor('borderColor');
+  LabelColor     := GetColor('labelColor');
+  BorderWidth    := GetFloat('borderWidth');
+  LineColor      := GetColor('lineColor');
+  LineWidth      := GetFloat('lineWidth');
+  FontSize       := GetFloat('fontSize');
+  JunctionColor  := GetColor('junctionColor');
+end;
 
 // ===========================================================================
 //  TParticipant
@@ -320,6 +435,7 @@ begin
   FIsBoundary   := False;
   FIsConstant   := False;
   FCompartment  := '';
+  Style        := TVisualStyle.Default;
 end;
 
 function TSpeciesNode.DisplayName: string;
@@ -362,6 +478,8 @@ begin
     Result.AddPair('compartment', FCompartment);
   if Assigned(FAliasOf) then
     Result.AddPair('aliasOf', FAliasOf.Id);
+  if Style.HasCustomStyle then
+    Result.AddPair('style', Style.ToJSON);
 end;
 
 class function TSpeciesNode.FromJSON(AObj: TJSONObject): TSpeciesNode;
@@ -384,6 +502,7 @@ class function TSpeciesNode.FromJSON(AObj: TJSONObject): TSpeciesNode;
 
 var
   CompartVal : TJSONValue;
+  StyleVal   : TJSONValue;
 begin
   Result := TSpeciesNode.Create(
     AObj.GetValue('id').Value,
@@ -395,6 +514,8 @@ begin
   Result.FIsConstant   := GetBool (AObj, 'isConstant');
   CompartVal := AObj.GetValue('compartment');
   if Assigned(CompartVal) then Result.FCompartment := CompartVal.Value;
+  StyleVal := AObj.GetValue('style');
+  if Assigned(StyleVal) then Result.Style.FromJSON(StyleVal as TJSONObject);
   // AliasOf resolved in a second pass by TBioModel.FromJSONObject
 end;
 
@@ -415,6 +536,7 @@ begin
   FIsLinear      := False;
   FIsBezier      := False;
   FIsJunctionSmooth := False;
+  FStyle        := TVisualStyle.Default;
 end;
 
 destructor TReaction.Destroy;
@@ -485,6 +607,9 @@ begin
     Arr.AddElement(PObj);
   end;
   Result.AddPair('products', Arr);
+
+  if FStyle.HasCustomStyle then
+    Result.AddPair('style', FStyle.ToJSON);
 end;
 
 // ===========================================================================
@@ -498,6 +623,7 @@ begin
   FId         := AId;
   FSize       := ASize;
   FDimensions := ADimensions;
+  FStyle      := TVisualStyle.Default;
 end;
 
 function TCompartment.ToJSON: TJSONObject;
@@ -506,14 +632,20 @@ begin
   Result.AddPair('id',         FId);
   Result.AddPair('size',       TJSONNumber.Create(FSize));
   Result.AddPair('dimensions', TJSONNumber.Create(FDimensions));
+  if FStyle.HasCustomStyle then
+    Result.AddPair('style', FStyle.ToJSON);
 end;
 
 class function TCompartment.FromJSON(AObj: TJSONObject): TCompartment;
+var
+  StyleVal : TJSONValue;
 begin
   Result := TCompartment.Create(
     AObj.GetValue('id').Value,
     (AObj.GetValue('size')       as TJSONNumber).AsDouble,
     (AObj.GetValue('dimensions') as TJSONNumber).AsInt);
+  StyleVal := AObj.GetValue('style');
+  if Assigned(StyleVal) then Result.FStyle.FromJSON(StyleVal as TJSONObject);
 end;
 
 // ===========================================================================
@@ -631,7 +763,7 @@ end;
 function TBioModel.AddSpecies(const AName : string;
                               AX, AY, AW, AH : Single): TSpeciesNode;
 begin
-  Result := TSpeciesNode.Create(GenerateId('s'), AName, AX, AY, AW, AH);
+  Result := TSpeciesNode.Create(GenerateId('S'), AName, AX, AY, AW, AH);
   FSpecies.Add(Result);
 end;
 
@@ -641,7 +773,7 @@ var
 begin
   Root           := APrimary;
   if Root.IsAlias then Root := Root.AliasOf;
-  Result         := TSpeciesNode.Create(GenerateId('s'), Root.Name,
+  Result         := TSpeciesNode.Create(GenerateId('S'), Root.Name,
                                         AX, AY, Root.Width, Root.Height);
   Result.AliasOf := Root;
   FSpecies.Add(Result);
@@ -649,7 +781,7 @@ end;
 
 function TBioModel.AddReaction(AJX, AJY: Single): TReaction;
 begin
-  Result := TReaction.Create(GenerateId('r'), AJX, AJY);
+  Result := TReaction.Create(GenerateId('R'), AJX, AJY);
   FReactions.Add(Result);
 end;
 
@@ -755,7 +887,6 @@ var
   Aliases       : TArray<TSpeciesNode>;
   R             : TReaction;
   S             : TSpeciesNode;
-  P             : TParticipant;
   i             : Integer;
 
   function ReferencesAny(AReaction: TReaction): Boolean;
@@ -873,9 +1004,9 @@ begin
   Result := False;
 end;
 
-// ---------------------------------------------------------------------------
-//  Persistence
-// ---------------------------------------------------------------------------
+// ===========================================================================
+//  JSON persistence
+// ===========================================================================
 
 function TBioModel.ToJSONObject: TJSONObject;
 var
@@ -999,6 +1130,10 @@ begin
     var JSVal := RctObj.GetValue('isJunctionSmooth');
     if Assigned(JSVal) then R.IsJunctionSmooth := (JSVal as TJSONBool).AsBoolean;
 
+    // Visual style (v3+)
+    var StyleVal := RctObj.GetValue('style');
+    if Assigned(StyleVal) then R.FStyle.FromJSON(StyleVal as TJSONObject);
+
     // Helper to load a participant object with optional control points
     var LoadParticipant := procedure(APObj: TJSONObject; AList: TObjectList<TParticipant>)
     var
@@ -1027,7 +1162,7 @@ begin
       AList.Add(Part);
     end;
 
-    // Reactants — support both v1 (plain id string) and v2 (object with stoich)
+    // Reactants -- support both v1 (plain id string) and v2+ (object with stoich)
     var ReactArr := RctObj.GetValue('reactants') as TJSONArray;
     for j := 0 to ReactArr.Count - 1 do
     begin

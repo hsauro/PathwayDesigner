@@ -121,8 +121,13 @@ type
     MenuItem5: TMenuItem;
     btnMakeNice: TSpeedButton;
     Layout5: TLayout;
-    ColorListBox1: TColorListBox;
-    ColorComboBox1: TColorComboBox;
+    ColorAnimation1: TColorAnimation;
+    ColorAnimation2: TColorAnimation;
+    GroupBox1: TGroupBox;
+    ccbSpeciesFillColor: TColorComboBox;
+    ccbSpeciesBorderColor: TColorComboBox;
+    Label1: TLabel;
+    Label2: TLabel;
     procedure btnAddBiUniClick(Sender: TObject);
     procedure btnAddSpeciesClick(Sender: TObject);
     procedure btnAddUniBiClick(Sender: TObject);
@@ -139,6 +144,8 @@ type
     procedure btnSmoothJunctionClick(Sender: TObject);
     procedure btnToggleAliasClick(Sender: TObject);
     procedure bynAddBiBiClick(Sender: TObject);
+    procedure ccbSpeciesBorderColorChange(Sender: TObject);
+    procedure ccbSpeciesFillColorChange(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
     procedure FormCreate(Sender: TObject);
     procedure FormKeyDown(Sender: TObject; var Key: Word; var KeyChar: WideChar;
@@ -235,7 +242,6 @@ end;
 
 
 procedure TfrmMain.ApplyScrollToView;
-
 begin
   if not Assigned(FView) then Exit;
   // ScrollOffset is a direct pixel translation — no zoom needed here because
@@ -324,7 +330,7 @@ end;
 
 procedure TfrmMain.btnRandomNetworkClick(Sender: TObject);
 begin
-  TRandomNetwork.Generate(FModel, 12, 16);  // 8 species, 10 reactions
+  TRandomNetwork.Generate(FModel, 10, 12);  // 8 species, 10 reactions
   FView.SyncSpeciesNameCounter;            // keep S-name counter in sync
   //FView.AutoLayout;                        // arrange sensibly
   HScrollBar.Value := 0;
@@ -386,6 +392,27 @@ begin
   FView.SetModeAddReaction(2, 2);   // 2 reactants, 2 products — click 4 species
 end;
 
+procedure TfrmMain.ccbSpeciesBorderColorChange(Sender: TObject);
+var S : TSpeciesNode;
+begin
+  for S in FModel.SelectedSpecies do
+      begin
+      S.Style.HasCustomStyle := True;
+      S.Style.BorderColor := ccbSpeciesBorderColor.Color;
+      end;
+  PaintBox.Redraw;
+end;
+
+procedure TfrmMain.ccbSpeciesFillColorChange(Sender: TObject);
+var S : TSpeciesNode;
+begin
+  for S in FModel.SelectedSpecies do
+      begin
+      S.Style.HasCustomStyle := True;
+      S.Style.FillColor := ccbSpeciesFillColor.Color;
+      end;
+  PaintBox.Redraw;
+end;
 
 procedure TfrmMain.SetScrollBarDefaults;
 const
