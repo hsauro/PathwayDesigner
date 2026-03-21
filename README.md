@@ -34,9 +34,16 @@ This version adds:
 - Undo/redo
 - Much better control over bezier curves
 
+### Version 0.1.2
+
+This version adds:
+
+- Export to SBML including SBML layout. This means file can be imported into SBML packages suchas SBMLLayout that support drawing of networks.
+- Fixed a number of bugs in Antimony import
+- Some experimental support for setting colors of species nodes
+- 
 ### Not yet supported
 
-- Import/Export of SBML (without layout/render info)
 - Printing of networks to png and pdf
 - Add modifier edges between species and reaction
 - Ability to set colors etc of species nodes and reactions
