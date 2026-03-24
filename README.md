@@ -44,10 +44,10 @@ This version adds:
 
  ### Version 0.2
 
-- Added align function to align species nodes: left, middle, right, top, center, bottom, distribute vertically, and distribute horizontally
+- Added right-click popup menu to align species nodes: left, middle, right, top, center, bottom, distribute vertically, and distribute horizontally
 - Further improvements to the autolayout functions.
 - Added a side text area where antimony syntax can be entered directly and the network drawn.
-- Added hover feature to get concentraton of species and ids of reactions
+- Added hover feature to get concentrations of species and ids of reactions
   
 ### Not yet supported
 
