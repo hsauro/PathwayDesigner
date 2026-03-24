@@ -144,6 +144,13 @@ type
 
     FNextSpeciesNum : Integer;
 
+    FHoverSpecies  : TSpeciesNode;
+    FHoverReaction : TReaction;
+    FTooltipVisible : Boolean;
+    FTooltipPos     : TPointF;   // screen position where tooltip appears
+
+    FOnNeedRepaint : TNotifyEvent;
+
     function EffectiveJunctionPos(R: TReaction): TPointF;
 
     // Compute auto control points for a Bezier leg.
@@ -197,6 +204,7 @@ type
     procedure RenderCtrlPtHandles  (const ACanvas: ISkCanvas);
     procedure RenderPendingReaction(const ACanvas: ISkCanvas);
     procedure RenderRubberBand     (const ACanvas: ISkCanvas);
+    procedure RenderTooltip        (const ACanvas: ISkCanvas);
 
     procedure DrawFilledTriangle(const ACanvas: ISkCanvas;
                                  const AV    : TArrowheadVertices;
@@ -304,6 +312,12 @@ type
     function  ContentBounds: TRectF;
     function  HasNonDefaultCompartments: Boolean;
 
+    // Called by the form's hover timer after the delay elapses.
+    procedure ShowTooltip;
+
+    // Called by the form when the mouse leaves the canvas entirely.
+    procedure HideTooltip;
+
     procedure SaveToFile (const AFileName: string);
     procedure LoadFromFile(const AFileName: string);
 
@@ -314,6 +328,7 @@ type
     property ShowAliasIndicator : Boolean            read FShowAliasIndicator write FShowAliasIndicator;
     property DefaultBezier         : Boolean read FDefaultBezier         write FDefaultBezier;
     property DefaultSmoothJunction : Boolean read FDefaultSmoothJunction write FDefaultSmoothJunction;
+    property OnNeedRepaint      : TNotifyEvent read FOnNeedRepaint write FOnNeedRepaint;
 
     // Undo / Redo
     procedure Undo;
@@ -1241,11 +1256,46 @@ procedure TDiagramView.MouseMove(Shift: TShiftState; X, Y: Single);
 var
   ScreenPt : TPointF;
   WorldPt  : TPointF;
+  HoverS : TSpeciesNode;
+  HoverR : TReaction;
+  WPt    : TPointF;
 begin
   ScreenPt     := TPointF.Create(X, Y);
   WorldPt      := S2W(ScreenPt);
   FMouseScreen := ScreenPt;
   FMouseWorld  := WorldPt;
+
+  // *** Hover detection — must be BEFORE the left-button guard ***
+  if HitTestSpecies(WorldPt, HoverS) then
+    begin
+      if HoverS <> FHoverSpecies then
+      begin
+        FHoverSpecies   := HoverS;
+        FHoverReaction  := nil;
+        FTooltipVisible := False;
+      end;
+    end
+    else if HitTestJunction(ScreenPt, HoverR) or
+            HitTestReactionLeg(ScreenPt, HoverR) then
+    begin
+      if HoverR <> FHoverReaction then
+      begin
+        FHoverReaction  := HoverR;
+        FHoverSpecies   := nil;
+        FTooltipVisible := False;
+      end;
+    end
+    else   // <<< this is the else branch — replaces your existing one
+    begin
+      var WasVisible  := FTooltipVisible;
+      FHoverSpecies   := nil;
+      FHoverReaction  := nil;
+      FTooltipVisible := False;
+      if WasVisible and Assigned(FOnNeedRepaint) then
+        FOnNeedRepaint(Self);
+    end;
+    FTooltipPos := TPointF.Create(X + 14, Y + 14);
+
 
   if not (ssLeft in Shift) then Exit;
 
@@ -1293,6 +1343,7 @@ begin
       FRubberCurScr := ScreenPt;
   end;
 end;
+
 
 procedure TDiagramView.MouseUp(Button: TMouseButton; Shift: TShiftState;
                                 X, Y: Single);
@@ -2725,6 +2776,77 @@ begin
   end;
 end;
 
+
+procedure TDiagramView.RenderTooltip(const ACanvas: ISkCanvas);
+const
+  PAD_H  = 10.0;
+  PAD_V  =  6.0;
+  CORNER =  5.0;
+  FONT_S = 11.0;
+  CLR_TT_FILL   : TAlphaColor = $F0FFFDE7;   // pale yellow
+  CLR_TT_BORDER : TAlphaColor = $FF888866;
+  CLR_TT_TEXT   : TAlphaColor = $FF333322;
+var
+  Text    : string;
+  Font    : ISkFont;
+  Paint   : ISkPaint;
+  TW      : Single;
+  Box     : TRectF;
+  Metrics : TSkFontMetrics;
+  BaseY   : Single;
+begin
+  if not FTooltipVisible then Exit;
+
+  if Assigned(FHoverSpecies) then
+    Text := FHoverSpecies.Id + ': ' +
+            FormatFloat('0.####', FHoverSpecies.InitialValue)
+  else if Assigned(FHoverReaction) then
+  begin
+    Text := FHoverReaction.Id;
+    if FHoverReaction.KineticLaw <> '' then
+      Text := Text + ': ' + FHoverReaction.KineticLaw;
+  end
+  else
+    Exit;
+
+  Font := TSkFont.Create(nil, FONT_S);
+  TW   := Font.MeasureText(Text);
+
+  Box := TRectF.Create(
+    FTooltipPos.X,
+    FTooltipPos.Y,
+    FTooltipPos.X + TW  + PAD_H * 2,
+    FTooltipPos.Y + FONT_S + PAD_V * 2);
+
+  // Keep tooltip inside the canvas if it would clip the right/bottom edge —
+  // pass canvas W, H in from Render.
+  // (wire FCanvasW/FCanvasH fields if you want this; omit for now)
+
+  Paint           := TSkPaint.Create;
+  Paint.AntiAlias := True;
+  Paint.Color     := CLR_TT_FILL;
+  Paint.Style     := TSkPaintStyle.Fill;
+  ACanvas.DrawRoundRect(Box, CORNER, CORNER, Paint);
+
+  Paint.Color     := CLR_TT_BORDER;
+  Paint.Style     := TSkPaintStyle.Stroke;
+  Paint.StrokeWidth := 1.0;
+  ACanvas.DrawRoundRect(Box, CORNER, CORNER, Paint);
+
+  Font.GetMetrics(Metrics);
+
+  // FIXED:
+  if Metrics.CapHeight > 0 then
+    BaseY := Box.Top + PAD_V + Metrics.CapHeight
+  else
+    BaseY := Box.Top + PAD_V + FONT_S * 0.75;
+
+  Paint.Color := CLR_TT_TEXT;
+  Paint.Style := TSkPaintStyle.Fill;
+  ACanvas.DrawSimpleText(Text, Box.Left + PAD_H, BaseY, Font, Paint);
+end;
+
+
 // ===========================================================================
 //  Undo helpers
 // ===========================================================================
@@ -2877,6 +2999,7 @@ begin
   RenderCtrlPtHandles  (ACanvas);   // on top of junction handles
   RenderPendingReaction(ACanvas);
   RenderRubberBand     (ACanvas);
+  RenderTooltip        (ACanvas);
 end;
 
 // ===========================================================================
@@ -3419,6 +3542,25 @@ begin
   finally
     Sel.Free;
   end;
+end;
+
+
+procedure TDiagramView.ShowTooltip;
+begin
+  if Assigned(FHoverSpecies) or Assigned(FHoverReaction) then
+  begin
+    FTooltipVisible := True;
+    if Assigned(FOnNeedRepaint) then
+      FOnNeedRepaint(Self);
+  end;
+end;
+
+
+procedure TDiagramView.HideTooltip;
+begin
+  FTooltipVisible := False;
+  FHoverSpecies   := nil;
+  FHoverReaction  := nil;
 end;
 
 

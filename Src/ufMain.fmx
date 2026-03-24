@@ -150,6 +150,12 @@ object frmMain: TfrmMain
       Text = 'lblStatus'
       TabOrder = 0
     end
+    object Label4: TLabel
+      Position.X = 1224.000000000000000000
+      Position.Y = 14.000000000000000000
+      Text = 'Label4'
+      TabOrder = 1
+    end
   end
   object Layout3: TLayout
     Align = Left
@@ -313,6 +319,7 @@ object frmMain: TfrmMain
       Size.PlatformDefault = False
       OnDblClick = PaintBoxDblClick
       OnMouseDown = PaintBoxMouseDown
+      OnMouseLeave = PaintBoxMouseLeave
       OnMouseMove = PaintBoxMouseMove
       OnMouseUp = PaintBoxMouseUp
       OnMouseWheel = PaintBoxMouseWheel
@@ -2808,5 +2815,12 @@ object frmMain: TfrmMain
       end>
     Left = 913
     Top = 90
+  end
+  object HoverTimer: TTimer
+    Enabled = False
+    Interval = 600
+    OnTimer = HoverTimerTimer
+    Left = 704
+    Top = 96
   end
 end

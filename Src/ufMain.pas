@@ -152,6 +152,8 @@ type
     mnuDistribHorizontally: TMenuItem;
     mnuDistribVertically: TMenuItem;
     mnuLockUnLockNode: TMenuItem;
+    Label4: TLabel;
+    HoverTimer: TTimer;
     procedure btnAddBiUniClick(Sender: TObject);
     procedure btnAddSpeciesClick(Sender: TObject);
     procedure btnAddUniBiClick(Sender: TObject);
@@ -179,6 +181,7 @@ type
     procedure FormKeyDown(Sender: TObject; var Key: Word; var KeyChar: WideChar;
         Shift: TShiftState);
     procedure FormResize(Sender: TObject);
+    procedure HoverTimerTimer(Sender: TObject);
     procedure HScrollBarChange(Sender: TObject);
     procedure mnuAboutClick(Sender: TObject);
     procedure mnuAlignBottomClick(Sender: TObject);
@@ -206,6 +209,7 @@ type
         TRectF; const AOpacity: Single);
     procedure PaintBoxMouseDown(Sender: TObject; Button: TMouseButton; Shift:
         TShiftState; X, Y: Single);
+    procedure PaintBoxMouseLeave(Sender: TObject);
     procedure PaintBoxMouseMove(Sender: TObject; Shift: TShiftState; X, Y: Single);
     procedure PaintBoxMouseUp(Sender: TObject; Button: TMouseButton; Shift:
         TShiftState; X, Y: Single);
@@ -246,6 +250,8 @@ type
     procedure ExportSBML;
     procedure ImportSBML;
 
+    procedure DiagramNeedRepaint(Sender: TObject);
+
   public
     { Public declarations }
   end;
@@ -267,6 +273,12 @@ begin
   FModel.Free;
 end;
 
+procedure TfrmMain.DiagramNeedRepaint(Sender: TObject);
+begin
+  PaintBox.Redraw;
+end;
+
+
 procedure TfrmMain.FormCreate(Sender: TObject);
 begin
   inherited;
@@ -283,6 +295,8 @@ begin
   SetScrollBarDefaults;
   btnToggleAlias.Text := 'Alias ✓';
   btnSmoothJunction.Text := 'Smooth J';
+
+  FView.OnNeedRepaint := DiagramNeedRepaint;
 end;
 
 
@@ -702,6 +716,11 @@ end;
 procedure TfrmMain.PaintBoxMouseMove(Sender: TObject; Shift: TShiftState; X, Y: Single);
 begin
   FView.MouseMove(Shift, X, Y);
+
+  // Reset the hover timer whenever the mouse moves
+  HoverTimer.Enabled := False;
+  HoverTimer.Enabled := True;
+
   PaintBox.Redraw;
 end;
 
@@ -963,6 +982,12 @@ begin
   end;
 end;
 
+procedure TfrmMain.HoverTimerTimer(Sender: TObject);
+begin
+  HoverTimer.Enabled := False;
+  FView.ShowTooltip;
+end;
+
 procedure TfrmMain.mnuAlignBottomClick(Sender: TObject);
 begin
   FView.AlignSelection(amBottom);
@@ -1020,6 +1045,12 @@ procedure TfrmMain.mnuUndoClick(Sender: TObject);
 begin
   FView.Undo;
   PaintBox.Redraw;
+end;
+
+procedure TfrmMain.PaintBoxMouseLeave(Sender: TObject);
+begin
+  HoverTimer.Enabled := False;
+  FView.HideTooltip;
 end;
 
 procedure TfrmMain.PaintBoxMouseWheel(Sender: TObject; Shift: TShiftState;
