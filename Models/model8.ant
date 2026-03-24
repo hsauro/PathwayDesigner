@@ -1,0 +1,18 @@
+﻿  // Species
+  species S1;
+  species S2;
+  species S3;
+
+  // Reactions
+  R4: S1 => S2; k4*S1;
+  R5: S2 => S3; k5*S2;
+
+  // Parameters
+  k4 = 0.1;
+  k5 = 0.1;
+
+  // Species initial values
+  S1 = 10.5;
+  S2 = 0.5;
+  S3 = 15.4;
+

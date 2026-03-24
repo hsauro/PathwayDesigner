@@ -1,0 +1,116 @@
+﻿{
+  "version": 3,
+  "modelName": "",
+  "compartments": [
+  ],
+  "parameters": [
+    {
+      "variable": "k4",
+      "expression": "0.1"
+    },
+    {
+      "variable": "k5",
+      "expression": "0.1"
+    }
+  ],
+  "assignmentRules": [
+  ],
+  "species": [
+    {
+      "id": "S1",
+      "x": 153.333343505859,
+      "y": 110.66667175293,
+      "w": 80.0,
+      "h": 36.0,
+      "initialValue": 10.5,
+      "isBoundary": false,
+      "isConstant": false
+    },
+    {
+      "id": "S2",
+      "x": 342.666687011719,
+      "y": 242.666687011719,
+      "w": 80.0,
+      "h": 36.0,
+      "initialValue": 0.5,
+      "isBoundary": false,
+      "isConstant": false
+    },
+    {
+      "id": "S3",
+      "x": 558.0,
+      "y": 206.66667175293,
+      "w": 80.0,
+      "h": 36.0,
+      "initialValue": 15.4,
+      "isBoundary": false,
+      "isConstant": false
+    }
+  ],
+  "reactions": [
+    {
+      "id": "R4",
+      "jx": 248.000015258789,
+      "jy": 176.666687011719,
+      "kineticLaw": "k4*S1",
+      "isReversible": false,
+      "isLinear": false,
+      "isBezier": true,
+      "isJunctionSmooth": true,
+      "reactants": [
+        {
+          "id": "S1",
+          "stoichiometry": 1.0,
+          "ctrl1x": 186.466674804687,
+          "ctrl1y": 133.766677856445,
+          "ctrl2x": 214.866683959961,
+          "ctrl2y": 153.566680908203,
+          "ctrlSet": true
+        }
+      ],
+      "products": [
+        {
+          "id": "S2",
+          "stoichiometry": 1.0,
+          "ctrl1x": 281.133361816406,
+          "ctrl1y": 199.766693115234,
+          "ctrl2x": 309.533355712891,
+          "ctrl2y": 219.566680908203,
+          "ctrlSet": true
+        }
+      ]
+    },
+    {
+      "id": "R5",
+      "jx": 450.333343505859,
+      "jy": 224.666687011719,
+      "kineticLaw": "k5*S2",
+      "isReversible": false,
+      "isLinear": false,
+      "isBezier": true,
+      "isJunctionSmooth": true,
+      "reactants": [
+        {
+          "id": "S2",
+          "stoichiometry": 1.0,
+          "ctrl1x": 380.350006103516,
+          "ctrl1y": 236.366683959961,
+          "ctrl2x": 412.650024414063,
+          "ctrl2y": 230.966690063477,
+          "ctrlSet": true
+        }
+      ],
+      "products": [
+        {
+          "id": "S3",
+          "stoichiometry": 1.0,
+          "ctrl1x": 488.016662597656,
+          "ctrl1y": 218.366683959961,
+          "ctrl2x": 520.316650390625,
+          "ctrl2y": 212.966674804687,
+          "ctrlSet": true
+        }
+      ]
+    }
+  ]
+}

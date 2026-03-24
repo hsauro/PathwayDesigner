@@ -95,13 +95,14 @@ type
 //  Owned by TReaction (via TObjectList with OwnsObjects=True).
 //  Holds a non-owning reference to a TSpeciesNode.
 // ===========================================================================
-  TParticipant = class
+ TParticipant = class
   private
     FSpecies       : TSpeciesNode;
     FStoichiometry : Double;
     FCtrl1         : TPointF;   // Bezier control point near the species end
     FCtrl2         : TPointF;   // Bezier control point near the junction end
     FCtrlPtsSet    : Boolean;   // False = auto-compute; True = user-placed
+    FNodeAnchor    : TPointF;   // <<< ADD THIS: boundary intersection point (P3)
   public
     constructor Create(ASpecies: TSpeciesNode; AStoichiometry: Double = 1.0);
     property Species       : TSpeciesNode read FSpecies       write FSpecies;
@@ -109,7 +110,7 @@ type
     property Ctrl1         : TPointF      read FCtrl1         write FCtrl1;
     property Ctrl2         : TPointF      read FCtrl2         write FCtrl2;
     property CtrlPtsSet    : Boolean      read FCtrlPtsSet    write FCtrlPtsSet;
-    // Clear manual control points -- next render auto-computes them
+    property NodeAnchor    : TPointF      read FNodeAnchor    write FNodeAnchor;
     procedure ResetCtrlPts;
   end;
 
@@ -129,6 +130,7 @@ type
     FIsBoundary   : Boolean;
     FIsConstant   : Boolean;
     FCompartment  : string;
+    FLocked : Boolean;
   public
     // Visual style
     Style        : TVisualStyle;
@@ -146,6 +148,7 @@ type
     property IsBoundary   : Boolean      read FIsBoundary   write FIsBoundary;
     property IsConstant   : Boolean      read FIsConstant   write FIsConstant;
     property Compartment  : string       read FCompartment  write FCompartment;
+    property Locked       : Boolean      read FLocked       write FLocked;
 
     function IsAlias     : Boolean; inline;
     function HalfW       : Single;  inline;
@@ -486,6 +489,7 @@ procedure TParticipant.ResetCtrlPts;
 begin
   FCtrl1      := TPointF.Create(0, 0);
   FCtrl2      := TPointF.Create(0, 0);
+  FNodeAnchor := TPointF.Zero;
   FCtrlPtsSet := False;
 end;
 

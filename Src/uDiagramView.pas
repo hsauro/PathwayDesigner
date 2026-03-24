@@ -26,6 +26,7 @@ uses
   System.JSON,
   System.Math,
   System.Generics.Collections,
+  System.Generics.Defaults,
   FMX.Dialogs,
   Skia,
   uBioModel,
@@ -61,8 +62,12 @@ const
   VIEW_SEL_RING_OUTSET = 6.0;   // world px gap between node border and halo
   VIEW_SEL_RING_WIDTH  = 2.0;   // world px stroke width of halo
 
-// ---------------------------------------------------------------------------
+// --------------------------------------------------------------------------
 type
+  TAlignMode = (amLeft, amCenterH, amRight,
+              amTop,  amMiddleV, amBottom,
+              amDistributeH, amDistributeV);
+
   TInteractionState = (
     isSelect, isAddSpecies, isAddReaction,
     isDraggingNodes, isDraggingJunction, isRubberBand,
@@ -280,6 +285,8 @@ type
     function  CreateAliasAt(APrimary: TSpeciesNode): TSpeciesNode;
     procedure GoToPrimary  (AAlias: TSpeciesNode);
 
+    procedure AlignSelection(AMode: TAlignMode);
+
     // --- Antimony import / export ---
     procedure ImportAntimony(const ASource: string);
     function  ExportAntimony: string;
@@ -288,7 +295,7 @@ type
     function ExportSBML: string;
 
     // --- Auto-layout ---
-    procedure AutoLayout(Iterations: Integer = 200);
+    procedure AutoLayout(Iterations: Integer = 200; bolDeckard : Boolean = False);
 
     procedure ZoomAtPoint(AScreenPt: TPointF; ADelta: Integer);
 
@@ -2897,7 +2904,7 @@ begin
   Result := TAntimonyBridge.ExportToString(FModel);
 end;
 
-procedure TDiagramView.AutoLayout(Iterations: Integer);
+procedure TDiagramView.AutoLayout(Iterations: Integer; bolDeckard : Boolean);
 var
   SnapBefore : string;
   SnapNum    : Integer;
@@ -2905,14 +2912,15 @@ var
 begin
   SnapBefore := TakeSnapshot;
   SnapNum    := FNextSpeciesNum;
-  TAutoLayout.Run(FModel, Iterations);
-  // Auto-layout moves species centres and junction positions but leaves stored
-  // control points at their old absolute coordinates.  For any reaction that
-  // uses smooth junctions, rematerialise the ctrl pts from the new positions
-  // so the inner handles remain collinear through the (now-moved) junction.
+  TAutoLayout.Run(FModel, Iterations, 8000.0, 0.02, 0.01, 20.0, 0.98, bolDeckard); // was 4.0
+  // TAutoLayout.Run now freshly computes Bézier ctrl pts for all non-smooth
+  // reactions via TBezierCtrlPts.Compute.  Smooth reactions still need
+  // MaterialiseSmoothCtrlPts to enforce collinear inner handles through
+  // the (now-moved) junction.
   for R in FModel.Reactions do
     if R.IsBezier and R.IsJunctionSmooth then
       MaterialiseSmoothCtrlPts(R);
+
   FUndoManager.Push(TSnapshotCmd.Create('Auto layout', FModel,
     SnapBefore, TakeSnapshot, SnapNum, FNextSpeciesNum, FRestoreProc));
 end;
@@ -3091,6 +3099,326 @@ end;
 function TDiagramView.ExportSBML: string;
 begin
   Result := TSBMLBridge.ExportToString(FModel);
+end;
+
+
+{ ===========================================================================
+  Alignment additions for uDiagramView.pas
+  =========================================
+
+  1.  Add TAlignMode to the TYPE section (before TDiagramView):
+
+        TAlignMode = (amLeft, amCenterH, amRight,
+                      amTop,  amMiddleV, amBottom,
+                      amDistributeH, amDistributeV);
+
+  2.  Add to the PUBLIC section of TDiagramView (alongside SelectAll etc.):
+
+        // Align or distribute all currently selected species nodes.
+        // Requires >= 2 nodes selected; Distribute requires >= 3.
+        // Fully undoable.
+        procedure AlignSelection(AMode: TAlignMode);
+
+  3.  Add the implementation below to the implementation section.
+      It uses MaterialiseSmoothCtrlPts which is already a private method,
+      so no extra visibility changes are needed.
+
+  Notes on ctrl pt propagation
+  ----------------------------
+  Each species may move by a DIFFERENT delta, so the approach differs from
+  ApplyDragDelta (which uses a single uniform delta).
+
+  Reactions where ALL participants are selected:
+    Junction moves by the average of all participant deltas.
+    Stored ctrl pts are translated: species-side handle by its species delta,
+    junction-side handle by the junction delta.
+    Smooth reactions are rematerialised to preserve collinearity.
+
+  Reactions where only SOME participants are selected:
+    Junction stays put (moving it would look wrong with mixed participation).
+    Stored ctrl pts for the moved participants are reset so ComputeAutoCtrlPts
+    takes over cleanly — trying to partially translate them produces curves that
+    don't match the new geometry.
+  =========================================================================== }
+
+// ---------------------------------------------------------------------------
+// Helper: human-readable description for undo menu.
+// ---------------------------------------------------------------------------
+function AlignModeDesc(AMode: TAlignMode): string;
+begin
+  case AMode of
+    amLeft:         Result := 'Align left';
+    amCenterH:      Result := 'Align centre (H)';
+    amRight:        Result := 'Align right';
+    amTop:          Result := 'Align top';
+    amMiddleV:      Result := 'Align middle (V)';
+    amBottom:       Result := 'Align bottom';
+    amDistributeH:  Result := 'Distribute horizontally';
+    amDistributeV:  Result := 'Distribute vertically';
+  else              Result := 'Align';
+  end;
+end;
+
+// ---------------------------------------------------------------------------
+
+procedure TDiagramView.AlignSelection(AMode: TAlignMode);
+var
+  Sel        : TList<TSpeciesNode>;
+  SortedSel  : TArray<TSpeciesNode>;
+  S          : TSpeciesNode;
+  R          : TReaction;
+  P          : TParticipant;
+  SnapBefore : string;
+  SnapNum    : Integer;
+  // Bounding box of the selection
+  MinLeft, MaxRight, MinTop, MaxBottom : Single;
+  TargetX, TargetY  : Single;
+  TotalSpan, Step   : Single;
+  i                 : Integer;
+  // Per-species movement delta
+  Deltas     : TDictionary<TSpeciesNode, TPointF>;
+  Delta      : TPointF;
+  // Per-reaction junction delta (only for fully-selected reactions)
+  JDeltas    : TDictionary<TReaction, TPointF>;
+  JDelta     : TPointF;
+  AllMoved   : Boolean;
+  SumDX, SumDY : Single;
+  PartCount    : Integer;
+begin
+  // -----------------------------------------------------------------------
+  //  Collect selected species.
+  // -----------------------------------------------------------------------
+  Sel := TList<TSpeciesNode>.Create;
+  try
+    for S in FModel.Species do
+      if S.Selected then
+        Sel.Add(S);
+
+    if Sel.Count < 2 then Exit;
+    if (AMode in [amDistributeH, amDistributeV]) and (Sel.Count < 3) then Exit;
+
+    SnapBefore := TakeSnapshot;
+    SnapNum    := FNextSpeciesNum;
+
+    Deltas  := TDictionary<TSpeciesNode, TPointF>.Create;
+    JDeltas := TDictionary<TReaction,    TPointF>.Create;
+    try
+
+      // -----------------------------------------------------------------------
+      //  Compute bounding box of the current selection.
+      // -----------------------------------------------------------------------
+      MinLeft   :=  1e9;  MaxRight  := -1e9;
+      MinTop    :=  1e9;  MaxBottom := -1e9;
+      for S in Sel do
+      begin
+        MinLeft   := Min(MinLeft,   S.Center.X - S.HalfW);
+        MaxRight  := Max(MaxRight,  S.Center.X + S.HalfW);
+        MinTop    := Min(MinTop,    S.Center.Y - S.HalfH);
+        MaxBottom := Max(MaxBottom, S.Center.Y + S.HalfH);
+      end;
+
+      // -----------------------------------------------------------------------
+      //  Move each species to its target position and record the delta.
+      // -----------------------------------------------------------------------
+      case AMode of
+
+        amLeft:
+          for S in Sel do
+          begin
+            TargetX := MinLeft + S.HalfW;   // left edges flush to leftmost
+            Deltas.Add(S, TPointF.Create(TargetX - S.Center.X, 0));
+            S.Center := TPointF.Create(TargetX, S.Center.Y);
+          end;
+
+        amCenterH:
+        begin
+          TargetX := (MinLeft + MaxRight) * 0.5;   // all centres to bbox midpoint
+          for S in Sel do
+          begin
+            Deltas.Add(S, TPointF.Create(TargetX - S.Center.X, 0));
+            S.Center := TPointF.Create(TargetX, S.Center.Y);
+          end;
+        end;
+
+        amRight:
+          for S in Sel do
+          begin
+            TargetX := MaxRight - S.HalfW;   // right edges flush to rightmost
+            Deltas.Add(S, TPointF.Create(TargetX - S.Center.X, 0));
+            S.Center := TPointF.Create(TargetX, S.Center.Y);
+          end;
+
+        amTop:
+          for S in Sel do
+          begin
+            TargetY := MinTop + S.HalfH;   // top edges flush to topmost
+            Deltas.Add(S, TPointF.Create(0, TargetY - S.Center.Y));
+            S.Center := TPointF.Create(S.Center.X, TargetY);
+          end;
+
+        amMiddleV:
+        begin
+          TargetY := (MinTop + MaxBottom) * 0.5;   // all centres to bbox midpoint
+          for S in Sel do
+          begin
+            Deltas.Add(S, TPointF.Create(0, TargetY - S.Center.Y));
+            S.Center := TPointF.Create(S.Center.X, TargetY);
+          end;
+        end;
+
+        amBottom:
+          for S in Sel do
+          begin
+            TargetY := MaxBottom - S.HalfH;   // bottom edges flush to bottommost
+            Deltas.Add(S, TPointF.Create(0, TargetY - S.Center.Y));
+            S.Center := TPointF.Create(S.Center.X, TargetY);
+          end;
+
+        amDistributeH:
+        begin
+          // Sort by current centre X; keep leftmost and rightmost pinned;
+          // space the intermediate centres evenly.
+          SortedSel := Sel.ToArray;
+          TArray.Sort<TSpeciesNode>(SortedSel,
+            TComparer<TSpeciesNode>.Construct(
+              function(const A, B: TSpeciesNode): Integer
+              begin
+                if      A.Center.X < B.Center.X then Result := -1
+                else if A.Center.X > B.Center.X then Result :=  1
+                else                                  Result :=  0;
+              end));
+          TotalSpan := SortedSel[High(SortedSel)].Center.X - SortedSel[0].Center.X;
+          Step      := TotalSpan / (Length(SortedSel) - 1);
+          for i := 0 to High(SortedSel) do
+          begin
+            S       := SortedSel[i];
+            TargetX := SortedSel[0].Center.X + i * Step;
+            Deltas.Add(S, TPointF.Create(TargetX - S.Center.X, 0));
+            S.Center := TPointF.Create(TargetX, S.Center.Y);
+          end;
+        end;
+
+        amDistributeV:
+        begin
+          // Sort by current centre Y; keep topmost and bottommost pinned.
+          SortedSel := Sel.ToArray;
+          TArray.Sort<TSpeciesNode>(SortedSel,
+            TComparer<TSpeciesNode>.Construct(
+              function(const A, B: TSpeciesNode): Integer
+              begin
+                if      A.Center.Y < B.Center.Y then Result := -1
+                else if A.Center.Y > B.Center.Y then Result :=  1
+                else                                  Result :=  0;
+              end));
+          TotalSpan := SortedSel[High(SortedSel)].Center.Y - SortedSel[0].Center.Y;
+          Step      := TotalSpan / (Length(SortedSel) - 1);
+          for i := 0 to High(SortedSel) do
+          begin
+            S       := SortedSel[i];
+            TargetY := SortedSel[0].Center.Y + i * Step;
+            Deltas.Add(S, TPointF.Create(0, TargetY - S.Center.Y));
+            S.Center := TPointF.Create(S.Center.X, TargetY);
+          end;
+        end;
+
+      end; // case AMode
+
+      // -----------------------------------------------------------------------
+      //  Propagate movement to reaction junctions and Bézier ctrl pts.
+      // -----------------------------------------------------------------------
+      for R in FModel.Reactions do
+      begin
+        if (R.Reactants.Count + R.Products.Count) = 0 then Continue;
+
+        // Does every participant of this reaction belong to the moved set?
+        AllMoved := True;
+        for P in R.Reactants do
+          if not Deltas.ContainsKey(P.Species) then begin AllMoved := False; Break; end;
+        if AllMoved then
+          for P in R.Products do
+            if not Deltas.ContainsKey(P.Species) then begin AllMoved := False; Break; end;
+
+        if AllMoved then
+        begin
+          // ----------------------------------------------------------------
+          //  All participants moved: translate junction by their average delta.
+          //  This preserves the junction's position relative to the reaction
+          //  centre when the whole reaction is selected together.
+          // ----------------------------------------------------------------
+          SumDX := 0; SumDY := 0; PartCount := 0;
+          for P in R.Reactants do
+          begin
+            Delta  := Deltas[P.Species];
+            SumDX  := SumDX + Delta.X;
+            SumDY  := SumDY + Delta.Y;
+            Inc(PartCount);
+          end;
+          for P in R.Products do
+          begin
+            Delta  := Deltas[P.Species];
+            SumDX  := SumDX + Delta.X;
+            SumDY  := SumDY + Delta.Y;
+            Inc(PartCount);
+          end;
+          JDelta := TPointF.Create(SumDX / PartCount, SumDY / PartCount);
+          R.JunctionPos := TPointF.Create(
+            R.JunctionPos.X + JDelta.X,
+            R.JunctionPos.Y + JDelta.Y);
+          JDeltas.Add(R, JDelta);
+
+          // Translate stored ctrl pts.
+          //   Reactant leg: Ctrl1 = species-side, Ctrl2 = junction-side
+          //   Product  leg: Ctrl1 = junction-side, Ctrl2 = species-side
+          if R.IsBezier then
+          begin
+            for P in R.Reactants do
+              if P.CtrlPtsSet then
+              begin
+                Delta   := Deltas[P.Species];
+                P.Ctrl1 := TPointF.Create(P.Ctrl1.X + Delta.X,   P.Ctrl1.Y + Delta.Y);
+                P.Ctrl2 := TPointF.Create(P.Ctrl2.X + JDelta.X,  P.Ctrl2.Y + JDelta.Y);
+              end;
+            for P in R.Products do
+              if P.CtrlPtsSet then
+              begin
+                Delta   := Deltas[P.Species];
+                P.Ctrl1 := TPointF.Create(P.Ctrl1.X + JDelta.X,  P.Ctrl1.Y + JDelta.Y);
+                P.Ctrl2 := TPointF.Create(P.Ctrl2.X + Delta.X,   P.Ctrl2.Y + Delta.Y);
+              end;
+
+            // Smooth reactions: rematerialise to preserve collinearity.
+            if R.IsJunctionSmooth then
+              MaterialiseSmoothCtrlPts(R);
+          end;
+        end
+        else
+        begin
+          // ----------------------------------------------------------------
+          //  Only some participants moved: the junction stays where it is.
+          //  Trying to partially translate ctrl pts would produce curves that
+          //  don't match the new geometry, so reset them and let
+          //  ComputeAutoCtrlPts take over at next render.
+          // ----------------------------------------------------------------
+          if R.IsBezier then
+          begin
+            for P in R.Reactants do
+              if Deltas.ContainsKey(P.Species) then P.ResetCtrlPts;
+            for P in R.Products do
+              if Deltas.ContainsKey(P.Species) then P.ResetCtrlPts;
+          end;
+        end;
+      end;
+
+      FUndoManager.Push(TSnapshotCmd.Create(AlignModeDesc(AMode), FModel,
+        SnapBefore, TakeSnapshot, SnapNum, FNextSpeciesNum, FRestoreProc));
+
+    finally
+      JDeltas.Free;
+      Deltas.Free;
+    end;
+  finally
+    Sel.Free;
+  end;
 end;
 
 

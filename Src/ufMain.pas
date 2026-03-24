@@ -57,7 +57,7 @@ uses
   FMX.Objects,
   FMX.Colors,
   FMX.ListBox,
-  FMX.Ani;
+  FMX.Ani, FMX.Edit, FMX.EditBox, FMX.NumberBox, FMX.Memo.Types, FMX.ScrollBox, FMX.Memo;
 
 
 type
@@ -134,13 +134,31 @@ type
     Label2: TLabel;
     mnuSaveToSBML: TMenuItem;
     MenuItem6: TMenuItem;
-    Button1: TButton;
+    Label3: TLabel;
+    edtNumConcentration: TNumberBox;
+    moAntimony: TMemo;
+    btnLoadAnt: TButton;
+    chkDeckard: TCheckBox;
+    chkRandomize: TCheckBox;
+    mnuAlignment: TMenuItem;
+    mnuAlignTop: TMenuItem;
+    mnuAlignMiddle: TMenuItem;
+    mnuAlignBottom: TMenuItem;
+    MenuItem8: TMenuItem;
+    mnuAlignLeft: TMenuItem;
+    mnuAlignCenter: TMenuItem;
+    mnuAlignRight: TMenuItem;
+    MenuItem2: TMenuItem;
+    mnuDistribHorizontally: TMenuItem;
+    mnuDistribVertically: TMenuItem;
+    mnuLockUnLockNode: TMenuItem;
     procedure btnAddBiUniClick(Sender: TObject);
     procedure btnAddSpeciesClick(Sender: TObject);
     procedure btnAddUniBiClick(Sender: TObject);
     procedure btnAddUniUniClick(Sender: TObject);
     procedure btnLayoutClick(Sender: TObject);
     procedure btnLinearUniUniClick(Sender: TObject);
+    procedure btnLoadAntClick(Sender: TObject);
     procedure btnMakeNiceClick(Sender: TObject);
     procedure btnNewClick(Sender: TObject);
     procedure btnOpenClick(Sender: TObject);
@@ -153,6 +171,9 @@ type
     procedure bynAddBiBiClick(Sender: TObject);
     procedure ccbSpeciesBorderColorChange(Sender: TObject);
     procedure ccbSpeciesFillColorChange(Sender: TObject);
+    procedure chkDeckardChange(Sender: TObject);
+    procedure chkRandomizeChange(Sender: TObject);
+    procedure edtNumConcentrationExit(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
     procedure FormCreate(Sender: TObject);
     procedure FormKeyDown(Sender: TObject; var Key: Word; var KeyChar: WideChar;
@@ -160,11 +181,20 @@ type
     procedure FormResize(Sender: TObject);
     procedure HScrollBarChange(Sender: TObject);
     procedure mnuAboutClick(Sender: TObject);
+    procedure mnuAlignBottomClick(Sender: TObject);
+    procedure mnuAlignCenterClick(Sender: TObject);
+    procedure mnuAlignLeftClick(Sender: TObject);
+    procedure mnuAlignMiddleClick(Sender: TObject);
+    procedure mnuAlignRightClick(Sender: TObject);
+    procedure mnuAlignTopClick(Sender: TObject);
     procedure mnuCreateAliasClick(Sender: TObject);
     procedure mnuDeleteNodeClick(Sender: TObject);
+    procedure mnuDistribHorizontallyClick(Sender: TObject);
+    procedure mnuDistribVerticallyClick(Sender: TObject);
     procedure mnuExportAntimonyClick(Sender: TObject);
     procedure mnuGotoPrimaryClick(Sender: TObject);
     procedure mnuImportAntimonyClick(Sender: TObject);
+    procedure mnuLockUnLockNodeClick(Sender: TObject);
     procedure mnuMakeNiceReactionClick(Sender: TObject);
     procedure mnuQuitClick(Sender: TObject);
     procedure mnuRedoClick(Sender: TObject);
@@ -190,6 +220,8 @@ type
 
     // --- Flag to suppress re-entrant scrollbar updates ---
     FUpdatingScrollBars : Boolean;
+    bolDeckard : Boolean;
+    bolRandomize : Boolean;
 
     // The species / reaction that was right-clicked, set in PaintBoxMouseUp.
     FRightClickSpecies  : TSpeciesNode;
@@ -246,6 +278,8 @@ begin
   FView.DefaultBezier := True;
   FView.DefaultSmoothJunction := True;
   FView.LoadTestData;
+  bolDeckard := False;
+  bolRandomize := False;
   SetScrollBarDefaults;
   btnToggleAlias.Text := 'Alias ✓';
   btnSmoothJunction.Text := 'Smooth J';
@@ -287,8 +321,34 @@ end;
 procedure TfrmMain.btnLayoutClick(Sender: TObject);
 var MethodList : TStringList;
     errMsg : String;
+    S : TSpeciesNode;
+    P : TParticipant;
+    SumX, SumY : Single;
+    Count : Integer;
 begin
-  FView.AutoLayout;
+  if bolRandomize then
+  begin
+  for S in FModel.Species do
+      S.Center := TPointF.Create(Random(400) + 100, Random(400) + 100);
+
+for var R in FModel.Reactions do
+begin
+  SumX := 0; SumY := 0; Count := 0;
+  for P in R.Reactants do
+  begin SumX := SumX + P.Species.Center.X; SumY := SumY + P.Species.Center.Y; Inc(Count); end;
+  for P in R.Products do
+  begin SumX := SumX + P.Species.Center.X; SumY := SumY + P.Species.Center.Y; Inc(Count); end;
+  if Count > 0 then
+    R.JunctionPos := TPointF.Create(SumX / Count, SumY / Count);
+end;
+
+for var R in FModel.Reactions do
+  for P in R.Reactants do P.ResetCtrlPts;
+for var R in FModel.Reactions do
+  for P in R.Products do P.ResetCtrlPts;
+ end;
+
+  FView.AutoLayout (800, bolDeckard);
   UpdateScrollBars;
   PaintBox.Redraw;
 end;
@@ -296,6 +356,15 @@ end;
 procedure TfrmMain.btnLinearUniUniClick(Sender: TObject);
 begin
   FView.ToggleLinearSelected;
+  PaintBox.Redraw;
+end;
+
+procedure TfrmMain.btnLoadAntClick(Sender: TObject);
+begin
+  FView.ImportAntimony(moAntimony.Text);
+
+  UpdateScrollBars;
+  UpdateStatusBar;
   PaintBox.Redraw;
 end;
 
@@ -424,6 +493,22 @@ begin
   PaintBox.Redraw;
 end;
 
+procedure TfrmMain.chkDeckardChange(Sender: TObject);
+begin
+   if chkDeckard.IsChecked then
+      bolDeckard := True
+   else
+      bolDeckard := False;
+end;
+
+procedure TfrmMain.chkRandomizeChange(Sender: TObject);
+begin
+   if chkRandomize.IsChecked then
+      bolRandomize := True
+   else
+      bolRandomize := False;
+end;
+
 procedure TfrmMain.SetScrollBarDefaults;
 const
   CANVAS_SIZE = 8000;
@@ -490,6 +575,13 @@ begin
 
   UpdateScrollBars;   // content extent may have changed
   PaintBox.Redraw;
+end;
+
+procedure TfrmMain.edtNumConcentrationExit(Sender: TObject);
+var S : TSpeciesNode;
+begin
+  for S in FModel.SelectedSpecies do
+      S.InitialValue := edtNumConcentration.Value;
 end;
 
 
@@ -869,6 +961,59 @@ begin
   finally
     Dlg.Free;
   end;
+end;
+
+procedure TfrmMain.mnuAlignBottomClick(Sender: TObject);
+begin
+  FView.AlignSelection(amBottom);
+  PaintBox.Redraw;
+end;
+
+procedure TfrmMain.mnuAlignCenterClick(Sender: TObject);
+begin
+  FView.AlignSelection(amCenterH);
+  PaintBox.Redraw;
+end;
+
+procedure TfrmMain.mnuAlignLeftClick(Sender: TObject);
+begin
+  FView.AlignSelection(amLeft);
+  PaintBox.Redraw;
+end;
+
+procedure TfrmMain.mnuAlignMiddleClick(Sender: TObject);
+begin
+  FView.AlignSelection(amMiddleV);
+  PaintBox.Redraw;
+end;
+
+procedure TfrmMain.mnuAlignRightClick(Sender: TObject);
+begin
+  FView.AlignSelection(amRight);
+  PaintBox.Redraw;
+end;
+
+procedure TfrmMain.mnuAlignTopClick(Sender: TObject);
+begin
+  FView.AlignSelection(amTop);
+  PaintBox.Redraw;
+end;
+
+procedure TfrmMain.mnuDistribHorizontallyClick(Sender: TObject);
+begin
+  FView.AlignSelection(amDistributeH);
+  PaintBox.Redraw;
+end;
+
+procedure TfrmMain.mnuDistribVerticallyClick(Sender: TObject);
+begin
+  FView.AlignSelection(amDistributeV);
+  PaintBox.Redraw;
+end;
+
+procedure TfrmMain.mnuLockUnLockNodeClick(Sender: TObject);
+begin
+//
 end;
 
 procedure TfrmMain.mnuUndoClick(Sender: TObject);

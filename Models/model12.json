@@ -1,0 +1,564 @@
+﻿{
+  "version": 3,
+  "modelName": "",
+  "compartments": [
+  ],
+  "parameters": [
+    {
+      "variable": "k1",
+      "expression": "0.1"
+    },
+    {
+      "variable": "k2",
+      "expression": "0.1"
+    },
+    {
+      "variable": "k3",
+      "expression": "0.1"
+    },
+    {
+      "variable": "k4",
+      "expression": "0.1"
+    },
+    {
+      "variable": "k5",
+      "expression": "0.1"
+    },
+    {
+      "variable": "k6",
+      "expression": "0.1"
+    },
+    {
+      "variable": "k7",
+      "expression": "0.1"
+    },
+    {
+      "variable": "k8",
+      "expression": "0.1"
+    },
+    {
+      "variable": "k9",
+      "expression": "0.1"
+    },
+    {
+      "variable": "k10",
+      "expression": "0.1"
+    },
+    {
+      "variable": "k11",
+      "expression": "0.1"
+    },
+    {
+      "variable": "k12",
+      "expression": "0.1"
+    }
+  ],
+  "assignmentRules": [
+  ],
+  "species": [
+    {
+      "id": "S1",
+      "x": 223.365814208984,
+      "y": 293.505035400391,
+      "w": 80.0,
+      "h": 36.0,
+      "initialValue": 2.54420208930969,
+      "isBoundary": false,
+      "isConstant": false
+    },
+    {
+      "id": "S2",
+      "x": 321.156951904297,
+      "y": 93.0278778076172,
+      "w": 80.0,
+      "h": 36.0,
+      "initialValue": 4.98974800109863,
+      "isBoundary": false,
+      "isConstant": false
+    },
+    {
+      "id": "S3",
+      "x": 543.2978515625,
+      "y": 90.4276657104492,
+      "w": 80.0,
+      "h": 36.0,
+      "initialValue": 3.60544848442078,
+      "isBoundary": false,
+      "isConstant": false
+    },
+    {
+      "id": "S4",
+      "x": 717.120178222656,
+      "y": 237.36311340332,
+      "w": 80.0,
+      "h": 36.0,
+      "initialValue": 3.4372820854187,
+      "isBoundary": false,
+      "isConstant": false
+    },
+    {
+      "id": "S5",
+      "x": 710.371826171875,
+      "y": 469.061187744141,
+      "w": 80.0,
+      "h": 36.0,
+      "initialValue": 3.43048882484436,
+      "isBoundary": false,
+      "isConstant": false
+    },
+    {
+      "id": "S6",
+      "x": 461.917297363281,
+      "y": 368.378173828125,
+      "w": 80.0,
+      "h": 36.0,
+      "initialValue": 3.90363097190857,
+      "isBoundary": false,
+      "isConstant": false
+    },
+    {
+      "id": "S7",
+      "x": 594.98193359375,
+      "y": 605.091674804687,
+      "w": 80.0,
+      "h": 36.0,
+      "initialValue": 3.48944997787476,
+      "isBoundary": false,
+      "isConstant": false
+    },
+    {
+      "id": "S8",
+      "x": 372.044067382812,
+      "y": 661.264526367187,
+      "w": 80.0,
+      "h": 36.0,
+      "initialValue": 1.94194173812866,
+      "isBoundary": false,
+      "isConstant": false
+    },
+    {
+      "id": "S9",
+      "x": 201.184722900391,
+      "y": 517.506103515625,
+      "w": 80.0,
+      "h": 36.0,
+      "initialValue": 1.93564081192017,
+      "isBoundary": false,
+      "isConstant": false
+    },
+    {
+      "id": "S10",
+      "x": 76.4426498413086,
+      "y": 292.966369628906,
+      "w": 80.0,
+      "h": 36.0,
+      "initialValue": 3.13162684440613,
+      "isBoundary": false,
+      "isConstant": false
+    }
+  ],
+  "reactions": [
+    {
+      "id": "R11",
+      "jx": 272.261383056641,
+      "jy": 193.266448974609,
+      "kineticLaw": "k1*S1",
+      "isReversible": false,
+      "isLinear": false,
+      "isBezier": true,
+      "isJunctionSmooth": true,
+      "reactants": [
+        {
+          "id": "S1",
+          "stoichiometry": 1.0,
+          "ctrl1x": 240.479263305664,
+          "ctrl1y": 258.421539306641,
+          "ctrl2x": 255.147933959961,
+          "ctrl2y": 228.349960327148,
+          "ctrlSet": true
+        }
+      ],
+      "products": [
+        {
+          "id": "S2",
+          "stoichiometry": 1.0,
+          "ctrl1x": 289.374816894531,
+          "ctrl1y": 158.182952880859,
+          "ctrl2x": 304.043518066406,
+          "ctrl2y": 128.111373901367,
+          "ctrlSet": true
+        }
+      ]
+    },
+    {
+      "id": "R12",
+      "jx": 432.227416992188,
+      "jy": 91.7277679443359,
+      "kineticLaw": "k2*S2",
+      "isReversible": false,
+      "isLinear": false,
+      "isBezier": true,
+      "isJunctionSmooth": true,
+      "reactants": [
+        {
+          "id": "S2",
+          "stoichiometry": 1.0,
+          "ctrl1x": 360.031616210937,
+          "ctrl1y": 92.5728378295898,
+          "ctrl2x": 393.352752685547,
+          "ctrl2y": 92.1828079223633,
+          "ctrlSet": true
+        }
+      ],
+      "products": [
+        {
+          "id": "S3",
+          "stoichiometry": 1.0,
+          "ctrl1x": 471.102081298828,
+          "ctrl1y": 91.2727279663086,
+          "ctrl2x": 504.423187255859,
+          "ctrl2y": 90.882698059082,
+          "ctrlSet": true
+        }
+      ]
+    },
+    {
+      "id": "R13",
+      "jx": 630.209045410156,
+      "jy": 163.895385742187,
+      "kineticLaw": "k3*S3",
+      "isReversible": false,
+      "isLinear": false,
+      "isBezier": true,
+      "isJunctionSmooth": true,
+      "reactants": [
+        {
+          "id": "S3",
+          "stoichiometry": 1.0,
+          "ctrl1x": 573.716796875,
+          "ctrl1y": 116.14136505127,
+          "ctrl2x": 599.790161132813,
+          "ctrl2y": 138.181671142578,
+          "ctrlSet": true
+        }
+      ],
+      "products": [
+        {
+          "id": "S4",
+          "stoichiometry": 1.0,
+          "ctrl1x": 660.6279296875,
+          "ctrl1y": 189.609085083008,
+          "ctrl2x": 686.701293945313,
+          "ctrl2y": 211.6494140625,
+          "ctrlSet": true
+        }
+      ]
+    },
+    {
+      "id": "R14",
+      "jx": 713.746032714844,
+      "jy": 353.212158203125,
+      "kineticLaw": "k4*S4",
+      "isReversible": false,
+      "isLinear": false,
+      "isBezier": true,
+      "isJunctionSmooth": true,
+      "reactants": [
+        {
+          "id": "S4",
+          "stoichiometry": 1.0,
+          "ctrl1x": 715.939208984375,
+          "ctrl1y": 277.910278320313,
+          "ctrl2x": 714.927001953125,
+          "ctrl2y": 312.664978027344,
+          "ctrlSet": true
+        }
+      ],
+      "products": [
+        {
+          "id": "S5",
+          "stoichiometry": 1.0,
+          "ctrl1x": 712.565063476563,
+          "ctrl1y": 393.759307861328,
+          "ctrl2x": 711.552795410156,
+          "ctrl2y": 428.514038085937,
+          "ctrlSet": true
+        }
+      ]
+    },
+    {
+      "id": "R15",
+      "jx": 586.144592285156,
+      "jy": 418.719696044922,
+      "kineticLaw": "k5*S5",
+      "isReversible": false,
+      "isLinear": false,
+      "isBezier": true,
+      "isJunctionSmooth": true,
+      "reactants": [
+        {
+          "id": "S5",
+          "stoichiometry": 1.0,
+          "ctrl1x": 666.892272949219,
+          "ctrl1y": 451.441680908203,
+          "ctrl2x": 629.624145507812,
+          "ctrl2y": 436.339233398438,
+          "ctrlSet": true
+        }
+      ],
+      "products": [
+        {
+          "id": "S6",
+          "stoichiometry": 1.0,
+          "ctrl1x": 542.6650390625,
+          "ctrl1y": 401.100158691406,
+          "ctrl2x": 505.396850585937,
+          "ctrl2y": 385.997711181641,
+          "ctrlSet": true
+        }
+      ]
+    },
+    {
+      "id": "R16",
+      "jx": 528.449645996094,
+      "jy": 486.734893798828,
+      "kineticLaw": "k6*S6",
+      "isReversible": false,
+      "isLinear": false,
+      "isBezier": true,
+      "isJunctionSmooth": true,
+      "reactants": [
+        {
+          "id": "S6",
+          "stoichiometry": 1.0,
+          "ctrl1x": 485.20361328125,
+          "ctrl1y": 409.803039550781,
+          "ctrl2x": 505.163330078125,
+          "ctrl2y": 445.310028076172,
+          "ctrlSet": true
+        }
+      ],
+      "products": [
+        {
+          "id": "S7",
+          "stoichiometry": 1.0,
+          "ctrl1x": 551.735961914063,
+          "ctrl1y": 528.159790039063,
+          "ctrl2x": 571.695617675781,
+          "ctrl2y": 563.666809082031,
+          "ctrlSet": true
+        }
+      ]
+    },
+    {
+      "id": "R17",
+      "jx": 483.513000488281,
+      "jy": 633.178100585938,
+      "kineticLaw": "k7*S7",
+      "isReversible": false,
+      "isLinear": false,
+      "isBezier": true,
+      "isJunctionSmooth": true,
+      "reactants": [
+        {
+          "id": "S7",
+          "stoichiometry": 1.0,
+          "ctrl1x": 555.967834472656,
+          "ctrl1y": 614.921936035156,
+          "ctrl2x": 522.527099609375,
+          "ctrl2y": 623.347839355469,
+          "ctrlSet": true
+        }
+      ],
+      "products": [
+        {
+          "id": "S8",
+          "stoichiometry": 1.0,
+          "ctrl1x": 444.498870849609,
+          "ctrl1y": 643.008361816406,
+          "ctrl2x": 411.058197021484,
+          "ctrl2y": 651.434265136719,
+          "ctrlSet": true
+        }
+      ]
+    },
+    {
+      "id": "R18",
+      "jx": 286.614379882813,
+      "jy": 589.385375976563,
+      "kineticLaw": "k8*S8",
+      "isReversible": false,
+      "isLinear": false,
+      "isBezier": true,
+      "isJunctionSmooth": true,
+      "reactants": [
+        {
+          "id": "S8",
+          "stoichiometry": 1.0,
+          "ctrl1x": 342.143676757812,
+          "ctrl1y": 636.106811523437,
+          "ctrl2x": 316.514770507812,
+          "ctrl2y": 614.543090820312,
+          "ctrlSet": true
+        }
+      ],
+      "products": [
+        {
+          "id": "S9",
+          "stoichiometry": 1.0,
+          "ctrl1x": 256.713989257813,
+          "ctrl1y": 564.227661132812,
+          "ctrl2x": 231.085098266602,
+          "ctrl2y": 542.663818359375,
+          "ctrlSet": true
+        }
+      ]
+    },
+    {
+      "id": "R19",
+      "jx": 119.813690185547,
+      "jy": 427.236236572266,
+      "kineticLaw": "k9*S9",
+      "isReversible": false,
+      "isLinear": false,
+      "isBezier": true,
+      "isJunctionSmooth": true,
+      "reactants": [
+        {
+          "id": "S9",
+          "stoichiometry": 1.0,
+          "ctrl1x": 172.704864501953,
+          "ctrl1y": 485.911651611328,
+          "ctrl2x": 148.293548583984,
+          "ctrl2y": 458.830688476562,
+          "ctrlSet": true
+        }
+      ],
+      "products": [
+        {
+          "id": "S10",
+          "stoichiometry": 1.0,
+          "ctrl1x": 91.3338241577148,
+          "ctrl1y": 395.641784667969,
+          "ctrl2x": 104.922515869141,
+          "ctrl2y": 324.560821533203,
+          "ctrlSet": true
+        }
+      ]
+    },
+    {
+      "id": "R20",
+      "jx": 272.261383056641,
+      "jy": 193.266448974609,
+      "kineticLaw": "k10*S1",
+      "isReversible": false,
+      "isLinear": false,
+      "isBezier": true,
+      "isJunctionSmooth": true,
+      "reactants": [
+        {
+          "id": "S1",
+          "stoichiometry": 1.0,
+          "ctrl1x": 240.479263305664,
+          "ctrl1y": 258.421539306641,
+          "ctrl2x": 255.147933959961,
+          "ctrl2y": 228.349960327148,
+          "ctrlSet": true
+        }
+      ],
+      "products": [
+        {
+          "id": "S2",
+          "stoichiometry": 1.0,
+          "ctrl1x": 289.374816894531,
+          "ctrl1y": 158.182952880859,
+          "ctrl2x": 304.043518066406,
+          "ctrl2y": 128.111373901367,
+          "ctrlSet": true
+        }
+      ]
+    },
+    {
+      "id": "R21",
+      "jx": 467.41748046875,
+      "jy": 160.565353393555,
+      "kineticLaw": "k11*S2*S6",
+      "isReversible": false,
+      "isLinear": false,
+      "isBezier": true,
+      "isJunctionSmooth": true,
+      "reactants": [
+        {
+          "id": "S2",
+          "stoichiometry": 1.0,
+          "ctrl1x": 372.34814453125,
+          "ctrl1y": 116.665992736816,
+          "ctrl2x": 426.011047363281,
+          "ctrl2y": 198.838119506836,
+          "ctrlSet": true
+        },
+        {
+          "id": "S6",
+          "stoichiometry": 1.0,
+          "ctrl1x": 463.842376708984,
+          "ctrl1y": 295.643676757812,
+          "ctrl2x": 413.986297607422,
+          "ctrl2y": 209.95280456543,
+          "ctrlSet": true
+        }
+      ],
+      "products": [
+        {
+          "id": "S3",
+          "stoichiometry": 1.0,
+          "ctrl1x": 493.975616455078,
+          "ctrl1y": 136.017166137695,
+          "ctrl2x": 516.73974609375,
+          "ctrl2y": 114.975860595703,
+          "ctrlSet": true
+        }
+      ]
+    },
+    {
+      "id": "R22",
+      "jx": 277.458435058594,
+      "jy": 368.223602294922,
+      "kineticLaw": "k12*S1",
+      "isReversible": false,
+      "isLinear": false,
+      "isBezier": true,
+      "isJunctionSmooth": true,
+      "reactants": [
+        {
+          "id": "S1",
+          "stoichiometry": 1.0,
+          "ctrl1x": 242.298233032227,
+          "ctrl1y": 319.656524658203,
+          "ctrl2x": 258.526031494141,
+          "ctrl2y": 342.072113037109,
+          "ctrlSet": true
+        }
+      ],
+      "products": [
+        {
+          "id": "S9",
+          "stoichiometry": 1.0,
+          "ctrl1x": 311.865356445313,
+          "ctrl1y": 415.750152587891,
+          "ctrl2x": 227.880523681641,
+          "ctrl2y": 465.257232666016,
+          "ctrlSet": true
+        },
+        {
+          "id": "S6",
+          "stoichiometry": 1.0,
+          "ctrl1x": 315.317474365234,
+          "ctrl1y": 420.518615722656,
+          "ctrl2x": 397.356689453125,
+          "ctrl2y": 368.324066162109,
+          "ctrlSet": true
+        }
+      ]
+    }
+  ]
+}
