@@ -41,7 +41,14 @@ This version adds:
 - Export to SBML including SBML layout. This means file can be imported into SBML packages suchas SBMLLayout that support drawing of networks.
 - Fixed a number of bugs in Antimony import
 - Some experimental support for setting colors of species nodes
-- 
+
+ ### Version 0.2
+
+- Added align function to align species nodes: left, middle, right, top, center, bottom, distribute vertically, and distriute horizontally
+- Further improvements to the autolayout functons.
+- Added a side text area where antimony syntax can be entered directly and the network drawn.
+- Added hover feature to get concentraton of species and ids of reactions
+  
 ### Not yet supported
 
 - Printing of networks to png and pdf
@@ -51,10 +58,10 @@ This version adds:
 - Select different species node shapes
 - Positioning of species labels
 - Styling, such as Echer style
-- Alignment tools
 - Cicularlize a set of nodes
 - Interchange between json format and Alcuin human reable format
-- Try to add Deckard's autolayout algorithm 
+- Visualize compartments
+
   
 ## Contributing
 
