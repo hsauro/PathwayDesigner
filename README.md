@@ -48,10 +48,15 @@ This version adds:
 - Further improvements to the autolayout functions.
 - Added a side text area where antimony syntax can be entered directly and the network drawn.
 - Added hover feature to get concentrations of species and ids of reactions
-  
+
+### Version 0.22
+
+- Fixed small bug in antimony parsing
+- Added basic printing support
+- Added saving if networks as pdf or png files.
+- 
 ### Not yet supported
 
-- Printing of networks to png and pdf
 - Add modifier edges between species and reaction
 - Ability to set colors etc of species nodes and reactions
 - Set font sizes for species names
