@@ -61,9 +61,6 @@ type
     ttHasAlias,   // hasalias
     ttBackgroundColor, // backgroundcolor
     ttCompartmentStyle, // global style
-    ttSpeciesStyle,  // species-style
-    ttReactionStyle, // reaction-style
-    ttCurveType,  // curve-type
     ttFill,       // fill
     ttStroke,     // stroke
     ttShape,      // shape
@@ -170,7 +167,6 @@ type
     function ReadString: string;
     function ReadNumber: string;
     function ReadIdentifier: string;
-    function GetCompoundIdentifier: string;
     function GetHexColor: string;
     function IsAlpha(C: Char): Boolean;
     function IsAlphaNum(C: Char): Boolean;
@@ -433,19 +429,6 @@ begin
 end;
 
 
-function TAntimonyLexer.GetCompoundIdentifier: string;
-var
-  LStart: Integer;
-begin
-  LStart := FPosition;
-
-  while not IsAtEnd and (FCurrentChar in ['a'..'z', 'A'..'Z', '_', '0'..'9', '-']) do
-    NextChar;
-
-  Result := Copy(FSource, LStart, FPosition - LStart);
-end;
-
-
 function TAntimonyLexer.GetNextToken: TToken;
 var
   IdentifierValue: string;
@@ -537,26 +520,7 @@ begin
   // Identifiers and keywords
   if (FCurrentChar in ['a'..'z', 'A'..'Z', '_']) then
   begin
-    // Check if this might be a compound identifier (containing hyphens)
-    if (FPosition + 1 <= Length (FSource)) then
-    begin
-      // Look ahead to see if we might have a compound identifier
-      var TempPos := FPosition;
-      var HasHyphen := False;
-      while (TempPos <= Length (FSource)) and (FSource[TempPos] in ['a'..'z', 'A'..'Z', '_', '0'..'9', '-']) do
-      begin
-        if FSource[TempPos] = '-' then
-          HasHyphen := True;
-        Inc(TempPos);
-      end;
-
-      if HasHyphen then
-        IdentifierValue := GetCompoundIdentifier
-      else
-        IdentifierValue := ReadIdentifier;
-    end
-    else
-      IdentifierValue := ReadIdentifier;
+    IdentifierValue := ReadIdentifier;
 
     Result.TokenValue := IdentifierValue;
 
@@ -602,12 +566,6 @@ begin
       Result.TokenType := ttBackgroundColor
     else if SameText(IdentifierValue, 'compartment-style') then
       Result.TokenType := ttCompartmentStyle
-    else if SameText(IdentifierValue, 'species-style') then
-      Result.TokenType := ttSpeciesStyle
-    else if SameText(IdentifierValue, 'reaction-style') then
-      Result.TokenType := ttReactionStyle
-    else if SameText(IdentifierValue, 'curve-type') then
-      Result.TokenType := ttCurveType
     else if SameText(IdentifierValue, 'fill') then
       Result.TokenType := ttFill
     else if SameText(IdentifierValue, 'stroke') then
