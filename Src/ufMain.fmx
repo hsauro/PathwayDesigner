@@ -71,57 +71,93 @@ object frmMain: TfrmMain
     end
     object btnLayout: TSpeedButton
       Align = Left
+      Hint = 'Autolayout'
       Position.X = 200.000000000000000000
-      Size.Width = 56.000000000000000000
+      Size.Width = 48.000000000000000000
       Size.Height = 40.000000000000000000
       Size.PlatformDefault = False
-      Text = 'Layout'
       OnClick = btnLayoutClick
+      object Glyph10: TGlyph
+        Position.X = 16.000000000000000000
+        Position.Y = 13.000000000000000000
+        ImageIndex = 15
+        Images = ImageList1
+      end
     end
     object btnLinearUniUni: TSpeedButton
       Align = Left
-      Position.X = 256.000000000000000000
-      Size.Width = 80.000000000000000000
+      Hint = 'Make UniUi Reaction Straight'
+      Position.X = 248.000000000000000000
+      Size.Width = 48.000000000000000000
       Size.Height = 40.000000000000000000
       Size.PlatformDefault = False
-      Text = 'Linear UniUni'
       OnClick = btnLinearUniUniClick
+      object Glyph12: TGlyph
+        Position.X = 17.000000000000000000
+        Position.Y = 13.000000000000000000
+        ImageIndex = 17
+        Images = ImageList1
+      end
     end
     object btnRandomNetwork: TSpeedButton
       Align = Left
-      Position.X = 416.000000000000000000
-      Size.Width = 76.000000000000000000
+      Hint = 'Generate Random Network'
+      Position.X = 440.000000000000000000
+      Size.Width = 48.000000000000000000
       Size.Height = 40.000000000000000000
       Size.PlatformDefault = False
-      Text = 'Random Net'
       OnClick = btnRandomNetworkClick
+      object Glyph13: TGlyph
+        Position.X = 17.000000000000000000
+        Position.Y = 12.000000000000000000
+        ImageIndex = 18
+        Images = ImageList1
+      end
     end
     object btnSetBezier: TSpeedButton
       Align = Left
-      Position.X = 336.000000000000000000
-      Size.Width = 80.000000000000000000
+      Hint = 'Change Straight Lines to Bezier Curve'
+      Position.X = 296.000000000000000000
+      Size.Width = 48.000000000000000000
       Size.Height = 40.000000000000000000
       Size.PlatformDefault = False
-      Text = 'Set to Bezier'
       OnClick = btnSetBezierClick
+      object Glyph11: TGlyph
+        Position.X = 19.000000000000000000
+        Position.Y = 13.000000000000000000
+        ImageIndex = 16
+        Images = ImageList1
+      end
     end
     object btnSmoothJunction: TSpeedButton
       Align = Left
-      Position.X = 492.000000000000000000
-      Size.Width = 76.000000000000000000
+      Hint = 'Make Colinear Bezier Junction'
+      Position.X = 344.000000000000000000
+      Size.Width = 48.000000000000000000
       Size.Height = 40.000000000000000000
       Size.PlatformDefault = False
-      Text = 'Smooth Junc'
       OnClick = btnSmoothJunctionClick
+      object Glyph14: TGlyph
+        Position.X = 13.000000000000000000
+        Position.Y = 12.000000000000000000
+        ImageIndex = 19
+        Images = ImageList1
+      end
     end
     object btnMakeNice: TSpeedButton
       Align = Left
-      Position.X = 568.000000000000000000
-      Size.Width = 76.000000000000000000
+      Hint = 'Make the Bezier Curve Look Nice'
+      Position.X = 392.000000000000000000
+      Size.Width = 48.000000000000000000
       Size.Height = 40.000000000000000000
       Size.PlatformDefault = False
-      Text = 'Make Nice'
       OnClick = btnMakeNiceClick
+      object Glyph15: TGlyph
+        Position.X = 16.000000000000000000
+        Position.Y = 12.000000000000000000
+        ImageIndex = 20
+        Images = ImageList1
+      end
     end
     object chkDeckard: TCheckBox
       Position.X = 1080.000000000000000000
@@ -469,15 +505,18 @@ object frmMain: TfrmMain
         object mnuExportToPng: TMenuItem
           Locked = True
           Text = 'Export To Png'
+          OnClick = mnuExportToPngClick
         end
         object mnuExporttoPdf: TMenuItem
           Locked = True
           Text = 'Export to PDF'
+          OnClick = mnuExporttoPdfClick
         end
       end
       object mnuPrint: TMenuItem
         Locked = True
         Text = 'Print'
+        OnClick = mnuPrintClick
       end
       object mnuQuit: TMenuItem
         Locked = True
@@ -615,6 +654,13 @@ object frmMain: TfrmMain
       Text = 'Load Antimony'
       OnClick = btnLoadAntClick
     end
+  end
+  object HoverTimer: TTimer
+    Enabled = False
+    Interval = 600
+    OnTimer = HoverTimerTimer
+    Left = 704
+    Top = 96
   end
   object ImageList1: TImageList
     Source = <
@@ -2709,6 +2755,161 @@ object frmMain: TfrmMain
               'igner_VCL\pathwayDesigner\Icons\biuni_new.png'
           end>
         Name = 'Item 7'
+      end
+      item
+        MultiResBitmap.Height = 28
+        MultiResBitmap.Width = 28
+        MultiResBitmap.LoadSize = 0
+        MultiResBitmap = <
+          item
+            Width = 28
+            Height = 28
+            PNG = {
+              89504E470D0A1A0A0000000D494844520000001C0000001C0806000000720DDF
+              940000000473424954080808087C086488000000DC494441544889ED56C10D84
+              20101CA8C052ECE0EC4C3AA404EDC47B00827B7B3A24687C300931CA32B3ACB0
+              19206000AC03CC02982D3CAD0BDFAB71C93500C6C749397CA528C3655DCE049F
+              B870CC1962E6F528AEFD6514ABA76231896B2E1303006C4621389953052FB92C
+              803567711BD28E5784BAEEA513A5483F9C851A3FC9F37076B25A0E2FAE06E6E2
+              EE341C58E2CE98EBD5A4A407589EAC0DBA6017EC82EF1194B640740CBA8D69F1
+              5516E38EE6ADDA0291290B359EB6182D9BF73B2DC6C11690A0B8348BF1630B48
+              505C4F1BE114585A8C2A5BA088FEE7FA02CB8CD8186262214D0000000049454E
+              44AE426082}
+            FileName = 
+              'D:\Documents\Embarcadero\Studio\Projects\FMX\PathwayDesigner_FMX' +
+              '_2026\Icons\AutoLayout.png'
+          end>
+        Name = 'AutoLayout'
+      end
+      item
+        MultiResBitmap.Height = 28
+        MultiResBitmap.Width = 28
+        MultiResBitmap.LoadSize = 0
+        MultiResBitmap = <
+          item
+            Width = 28
+            Height = 28
+            PNG = {
+              89504E470D0A1A0A0000000D494844520000001C0000001C0806000000720DDF
+              940000000473424954080808087C08648800000172494441544889ED96D16D83
+              3010863F33011BC4DDC01B840DCA06E906E90664838C803A41B301DD806E803A
+              016C401F7CD073D254A6385254F597FC621B7F3EFBB8DF70A7CA813D9857301D
+              98515A0FA6012AC02502650759788C68CD1A70198268801DB0517336C016A8C3
+              C8B3E342567638036D233ECAFDD1CED1B6D2B708B65FB85300ABA2FD0E6A3ADF
+              02581F195504F4E278A77B62A7222B57C02639B55EA107EA30D3A812C026552A
+              7B67ED4360564BD45D0260AE4E70CE6E7BE59F4A010478969CB000C6F799CEEF
+              663C01EFC009F84804FCD71F93B9E1DA167884CCC15802038C0F6AD0B43E8553
+              28F04C5D54E67FD1A91A1A53E16380FDA56D0566609A1B94B6A7B3086B3D58A8
+              286D02985565AD526B073AAAB2B606AAEC09B1276D835FCA7DF2AC8216EA69D2
+              C6EEAE55EE71880459711A7D5FD10998ABE39568B35A8CD4AA394EECAD099F8E
+              BF7A9A803C339A2BF675DE7AB9AF1FAF21B6D23879223A304EA21B601C8037B1
+              B417DF7767FA045179A061CD53F23F0000000049454E44AE426082}
+            FileName = 
+              'D:\Documents\Embarcadero\Studio\Projects\FMX\PathwayDesigner_FMX' +
+              '_2026\Icons\ChangeTobezier.png'
+          end>
+        Name = 'ChangeTobezier'
+      end
+      item
+        MultiResBitmap.Height = 28
+        MultiResBitmap.Width = 28
+        MultiResBitmap.LoadSize = 0
+        MultiResBitmap = <
+          item
+            Width = 28
+            Height = 28
+            PNG = {
+              89504E470D0A1A0A0000000D494844520000001C0000001C0806000000720DDF
+              940000000473424954080808087C0864880000004049444154488963601805A3
+              608401C6FB10CCA0404F0BFFD3D35285514B87BFA58C744EC60F98E86411DD00
+              5DE371D4B2A167D94014DE74AF9E46C128A0010000A886296485CD7952000000
+              0049454E44AE426082}
+            FileName = 
+              'D:\Documents\Embarcadero\Studio\Projects\FMX\PathwayDesigner_FMX' +
+              '_2026\Icons\MakeUniUniStraight.png'
+          end>
+        Name = 'MakeUniUniStraight'
+      end
+      item
+        MultiResBitmap.Height = 28
+        MultiResBitmap.Width = 28
+        MultiResBitmap.LoadSize = 0
+        MultiResBitmap = <
+          item
+            Width = 28
+            Height = 28
+            PNG = {
+              89504E470D0A1A0A0000000D494844520000001C0000001C0806000000720DDF
+              940000000473424954080808087C0864880000013D494441544889CD96E18DC2
+              300C465FA21B2023740436A01BDC087403BA41D9003660841B21B7016CC008BD
+              0D7A3FEAB65108A1808BB0545111270FC7FE6C40DF4A301E4C0BA6EBDFD92CC0
+              01B03B81241EBBD3A655D3E1348093A70EBE2F1579C6CBA1DBC462135CAF1A70
+              88C225169DACB75F0A2407B6866EA6EFF35682DD07D518E62F322B79E4E12B75
+              7D8E867C8D101F15473D154D58B9F3E5316C0CA369259A22F06B6ECBE23AF294
+              606F45B3CDE4A3EA7DC61FE58175E49313ECB8719FD8F894CD11ECB70648EC43
+              05AB45B3C0DF0CBF97041B03CFF29EB8525BF59FDDAF161091C33DC1A6F2FB92
+              65043BCEB323B0D284A604BB017E22F8E94E8B5299F80570047309C017893A68
+              6DCB4CFC0A3845077AB087A527FE4AA28E9BF4E20DA488DAE35B1A0853916481
+              9D55247E640351FF43FCD0C4D7B2ECC4FF07FC23B9B9DBCF4E4F000000004945
+              4E44AE426082}
+            FileName = 
+              'D:\Documents\Embarcadero\Studio\Projects\FMX\PathwayDesigner_FMX' +
+              '_2026\Icons\RandomNetwork.png'
+          end>
+        Name = 'RandomNetwork'
+      end
+      item
+        MultiResBitmap.Height = 28
+        MultiResBitmap.Width = 28
+        MultiResBitmap.LoadSize = 0
+        MultiResBitmap = <
+          item
+            Width = 28
+            Height = 28
+            PNG = {
+              89504E470D0A1A0A0000000D494844520000001C0000001C0806000000720DDF
+              940000000473424954080808087C086488000000CA494441544889EDD6DD0DC2
+              201486E1B74CD00D64846EE0088EA0A3B8816E5037E9088EC0088CA01760444A
+              09209898F02524A4FC3C90A6E981FC48189469C882F545D8C3B6A6A88F35455D
+              CCBB617D54AE377E81A1B1EA183860644E51B636FA0043E85760E0D42B10EF73
+              A99D20981451FF301DEC60073BF88FE0E4F477BF064F05EBB3327A258636CF9A
+              455C9D5A66317D31B790461037E756D2FE70B5452FB56E2A419CDF1B0FDA7B87
+              9333A680A3379E9A50FDC9B25120C5EAD55C1005CCC03E61D1C1CEBDC7C0275C
+              785C8A2E7997F20000000049454E44AE426082}
+            FileName = 
+              'D:\Documents\Embarcadero\Studio\Projects\FMX\PathwayDesigner_FMX' +
+              '_2026\Icons\MakeSmoothBezier.png'
+          end>
+        Name = 'MakeSmoothBezier'
+      end
+      item
+        MultiResBitmap.Height = 28
+        MultiResBitmap.Width = 28
+        MultiResBitmap.LoadSize = 0
+        MultiResBitmap = <
+          item
+            Width = 28
+            Height = 28
+            PNG = {
+              89504E470D0A1A0A0000000D494844520000001C0000001C0806000000720DDF
+              940000000473424954080808087C08648800000172494441544889E595EF7582
+              3014C57F4917C806CD066503DDC06EA01BE806B8817602BA81ED047603BB816E
+              402768FA01429E40100B7C69EF393984F05E6E72797FE0AF43B5AC19D01B704F
+              C51C407DC2F70B7089EC3307BD0067838F7B03DE3B7C00F41E948B0F9D015638
+              5850C71B3EDB18D96B30220316C0AC1C19A8BCFC7E069262546B39B0133E8BD2
+              471EF48A6C2B369B454E64411D9A37E018646C401C8A8DDCC83B271D7A7BA4C2
+              3EED613F172A180A292A19FB2205D677D867E280EA54BEC4A41C03FE9627843C
+              53C278595520736D3939220A1E0D7C952B8F13B2F960BCE8B22200ACA6E3D3CB
+              E2E93EA885ADBDE1F91B58918B3E30AB843E8F4C6A8B3D9B6967427A8C469A04
+              32756AAB4646DC34EF597562980B19BB4A1F84CAA31CB0BC9FEB61556B02BD20
+              EA65B4BDB4A06A027DEBEC10D261641E1B41BAEB20DB0FFB0DD778168DF6500B
+              00231A773E6603A887B86D49A52151DD0A91C4EA7C3D9FA44235482727F330C0
+              A14F42FF4FFC00175497CC0AD2BBB30000000049454E44AE426082}
+            FileName = 
+              'D:\Documents\Embarcadero\Studio\Projects\FMX\PathwayDesigner_FMX' +
+              '_2026\Icons\MakeNiceBezier.png'
+          end>
+        Name = 'MakeNiceBezier'
       end>
     Destination = <
       item
@@ -2812,15 +3013,56 @@ object frmMain: TfrmMain
             SourceRect.Right = 460.000000000000000000
             SourceRect.Bottom = 460.000000000000000000
           end>
+      end
+      item
+        Layers = <
+          item
+            Name = 'AutoLayout'
+            SourceRect.Right = 28.000000000000000000
+            SourceRect.Bottom = 28.000000000000000000
+          end>
+      end
+      item
+        Layers = <
+          item
+            Name = 'ChangeTobezier'
+            SourceRect.Right = 28.000000000000000000
+            SourceRect.Bottom = 28.000000000000000000
+          end>
+      end
+      item
+        Layers = <
+          item
+            Name = 'MakeUniUniStraight'
+            SourceRect.Right = 28.000000000000000000
+            SourceRect.Bottom = 28.000000000000000000
+          end>
+      end
+      item
+        Layers = <
+          item
+            Name = 'RandomNetwork'
+            SourceRect.Right = 28.000000000000000000
+            SourceRect.Bottom = 28.000000000000000000
+          end>
+      end
+      item
+        Layers = <
+          item
+            Name = 'MakeSmoothBezier'
+            SourceRect.Right = 28.000000000000000000
+            SourceRect.Bottom = 28.000000000000000000
+          end>
+      end
+      item
+        Layers = <
+          item
+            Name = 'MakeNiceBezier'
+            SourceRect.Right = 28.000000000000000000
+            SourceRect.Bottom = 28.000000000000000000
+          end>
       end>
     Left = 913
     Top = 90
-  end
-  object HoverTimer: TTimer
-    Enabled = False
-    Interval = 600
-    OnTimer = HoverTimerTimer
-    Left = 704
-    Top = 96
   end
 end

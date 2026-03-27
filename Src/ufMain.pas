@@ -61,6 +61,8 @@ uses
 
 
 type
+  TPDFPageSize = (psA4Landscape, psA4Portrait, psLetterLandscape, psLetterPortrait);
+
   TfrmMain = class(TForm)
     Layout1: TLayout;
     Layout2: TLayout;
@@ -154,6 +156,12 @@ type
     mnuLockUnLockNode: TMenuItem;
     Label4: TLabel;
     HoverTimer: TTimer;
+    Glyph10: TGlyph;
+    Glyph11: TGlyph;
+    Glyph12: TGlyph;
+    Glyph13: TGlyph;
+    Glyph14: TGlyph;
+    Glyph15: TGlyph;
     procedure btnAddBiUniClick(Sender: TObject);
     procedure btnAddSpeciesClick(Sender: TObject);
     procedure btnAddUniBiClick(Sender: TObject);
@@ -195,10 +203,13 @@ type
     procedure mnuDistribHorizontallyClick(Sender: TObject);
     procedure mnuDistribVerticallyClick(Sender: TObject);
     procedure mnuExportAntimonyClick(Sender: TObject);
+    procedure mnuExporttoPdfClick(Sender: TObject);
+    procedure mnuExportToPngClick(Sender: TObject);
     procedure mnuGotoPrimaryClick(Sender: TObject);
     procedure mnuImportAntimonyClick(Sender: TObject);
     procedure mnuLockUnLockNodeClick(Sender: TObject);
     procedure mnuMakeNiceReactionClick(Sender: TObject);
+    procedure mnuPrintClick(Sender: TObject);
     procedure mnuQuitClick(Sender: TObject);
     procedure mnuRedoClick(Sender: TObject);
     procedure mnuRenameClick(Sender: TObject);
@@ -250,6 +261,10 @@ type
     procedure ExportSBML;
     procedure ImportSBML;
 
+    procedure SaveToPNG  (const AFileName: string; ADPI: Single = 150);
+    procedure SaveToPDF (const AFileName : String; APageSize: TPDFPageSize = psLetterPortrait);
+    procedure PrintDiagram;
+
     procedure DiagramNeedRepaint(Sender: TObject);
 
   public
@@ -263,8 +278,7 @@ implementation
 
 {$R *.fmx}
 
-Uses Math;
-
+Uses FMX.Printer, Math;
 
 
 procedure TfrmMain.FormDestroy(Sender: TObject);
@@ -294,7 +308,6 @@ begin
   bolRandomize := False;
   SetScrollBarDefaults;
   btnToggleAlias.Text := 'Alias ✓';
-  btnSmoothJunction.Text := 'Smooth J';
 
   FView.OnNeedRepaint := DiagramNeedRepaint;
 end;
@@ -1036,9 +1049,272 @@ begin
   PaintBox.Redraw;
 end;
 
+
 procedure TfrmMain.mnuLockUnLockNodeClick(Sender: TObject);
 begin
 //
+end;
+
+
+procedure TfrmMain.mnuExporttoPdfClick(Sender: TObject);
+var
+  Dlg: TSaveDialog;
+begin
+  Dlg := TSaveDialog.Create(nil);
+  try
+    Dlg.Title       := 'Save Diagram as PDF';
+    Dlg.Filter      := 'PDF files (*.pdf)|*.pdf';
+    Dlg.DefaultExt  := 'pdf';
+    Dlg.FileName    := 'diagram.pdf';
+    Dlg.Options     := [TOpenOption.ofOverwritePrompt];
+    if Dlg.Execute then
+      SaveToPDF(Dlg.FileName);
+  finally
+    Dlg.Free;
+  end;
+end;
+
+procedure TfrmMain.mnuExportToPngClick(Sender: TObject);
+var
+  Dlg: TSaveDialog;
+begin
+  Dlg := TSaveDialog.Create(nil);
+  try
+    Dlg.Title      := 'Save Diagram as PNG';
+    Dlg.Filter     := 'PNG image (*.png)|*.png';
+    Dlg.DefaultExt := 'png';
+    Dlg.FileName   := 'diagram.png';
+    Dlg.Options    := [TOpenOption.ofOverwritePrompt];
+    if Dlg.Execute then
+      SaveToPNG(Dlg.FileName);
+  finally
+    Dlg.Free;
+  end;
+end;
+
+
+procedure TfrmMain.PrintDiagram;
+var
+  SavedZoom   : Single;
+  SavedScroll : TPointF;
+  Bounds      : TRectF;
+  PageW, PageH: Integer;
+  AspectRatio : Single;
+  BmpW, BmpH  : Integer;
+  FitZoom     : Single;
+  Surface     : ISkSurface;
+  Image       : ISkImage;
+  Data        : TBytes;
+  Stream      : TBytesStream;
+  LBitmap     : TBitmap;
+const
+  MAX_BITMAP_SIDE = 2480;   // ~A4 at 300 DPI — safe for all drivers
+begin
+ PageW := Printer.PageWidth;
+  PageH := Printer.PageHeight;
+
+  // ── 1. Scale page pixel dims down to a safe bitmap size ───────────────────
+  //  Printer.PageWidth/Height are in printer pixels — could be huge at high DPI.
+  //  We preserve the aspect ratio and clamp the longer side to MAX_BITMAP_SIDE.
+  AspectRatio := PageW / PageH;
+  if PageW >= PageH then
+  begin
+    BmpW := MAX_BITMAP_SIDE;
+    BmpH := Round(MAX_BITMAP_SIDE / AspectRatio);
+  end
+  else
+  begin
+    BmpH := MAX_BITMAP_SIDE;
+    BmpW := Round(MAX_BITMAP_SIDE * AspectRatio);
+  end;
+
+  SavedZoom   := FView.Zoom;
+  SavedScroll := FView.ScrollOffset;
+  try
+    // ── 2. Fit content into the clamped bitmap ─────────────────────────────
+    Bounds  := FView.ContentBounds;
+    FitZoom := Min(BmpW / Bounds.Width, BmpH / Bounds.Height);
+
+    FView.Zoom         := FitZoom;
+    FView.ScrollOffset := TPointF.Create(
+      -Bounds.Left * FitZoom + (BmpW - Bounds.Width  * FitZoom) * 0.5,
+      -Bounds.Top  * FitZoom + (BmpH - Bounds.Height * FitZoom) * 0.5);
+
+    // ── 3. Render into Skia surface ────────────────────────────────────────
+    Surface := TSkSurface.MakeRaster(
+      TSkImageInfo.Create(BmpW, BmpH, TSkColorType.BGRA8888, TSkAlphaType.Premul));
+    if not Assigned(Surface) then
+      raise Exception.Create('Failed to create Skia raster surface');
+
+    Surface.Canvas.Clear(TAlphaColors.White);
+    FView.Render(Surface.Canvas, BmpW, BmpH);
+
+    // ── 4. Skia surface → FMX TBitmap ─────────────────────────────────────
+    Image  := Surface.MakeImageSnapshot;
+    Data   := Image.Encode(TSkEncodedImageFormat.PNG, 100);
+    Stream := TBytesStream.Create(Data);
+    try
+      LBitmap := TBitmap.Create;
+      try
+        LBitmap.LoadFromStream(Stream);
+
+        // ── 5. Blit to printer — driver scales to physical page ────────────
+        Printer.BeginDoc;
+        try
+          if Printer.Canvas.BeginScene then
+          try
+            Printer.Canvas.DrawBitmap(
+              LBitmap,
+              RectF(0, 0, BmpW, BmpH),
+              RectF(0, 0, PageW, PageH),
+              1.0);
+          finally
+            Printer.Canvas.EndScene;
+          end;
+        finally
+          Printer.EndDoc;
+        end;
+
+      finally
+        LBitmap.Free;
+      end;
+    finally
+      Stream.Free;
+    end;
+
+  finally
+    FView.Zoom         := SavedZoom;
+    FView.ScrollOffset := SavedScroll;
+  end;
+end;
+
+
+procedure TfrmMain.SaveToPNG  (const AFileName: string; ADPI: Single = 150);
+var
+  SavedZoom   : Single;
+  SavedScroll : TPointF;
+  Bounds      : TRectF;
+  FitZoom     : Single;
+  BmpW, BmpH  : Integer;
+  Surface     : ISkSurface;
+  Image       : ISkImage;
+  Data        : TBytes;
+  FS          : TFileStream;
+const
+  SCREEN_DPI = 96.0;
+begin
+  SavedZoom   := FView.Zoom;
+  SavedScroll := FView.ScrollOffset;
+  try
+    // ── 1. Compute content bounds and scale to requested DPI ──────────────────
+    Bounds  := FView.ContentBounds;
+    FitZoom := ADPI / SCREEN_DPI;   // e.g. 150 DPI → 1.5625× world units
+
+    BmpW := Round(Bounds.Width  * FitZoom);
+    BmpH := Round(Bounds.Height * FitZoom);
+
+    // ── 2. Set view to render the content region at the chosen scale ──────────
+    FView.Zoom         := FitZoom;
+    FView.ScrollOffset := TPointF.Create(
+      -Bounds.Left * FitZoom,
+      -Bounds.Top  * FitZoom);
+
+    // ── 3. Render into a Skia raster surface ──────────────────────────────────
+    Surface := TSkSurface.MakeRaster(
+      TSkImageInfo.Create(BmpW, BmpH,
+                          TSkColorType.BGRA8888,
+                          TSkAlphaType.Premul));
+    if not Assigned(Surface) then
+      raise Exception.Create('Failed to create Skia raster surface');
+
+    Surface.Canvas.Clear(TAlphaColors.White);
+    FView.Render(Surface.Canvas, BmpW, BmpH);
+
+    // ── 4. Encode and save ────────────────────────────────────────────────────
+    Image := Surface.MakeImageSnapshot;
+    Data  := Image.Encode(TSkEncodedImageFormat.PNG, 100);
+
+    FS := TFileStream.Create(AFileName, fmCreate);
+    try
+      FS.WriteBuffer(Data[0], Length(Data));
+    finally
+      FS.Free;
+    end;
+
+  finally
+    FView.Zoom         := SavedZoom;
+    FView.ScrollOffset := SavedScroll;
+  end;
+end;
+
+
+procedure TfrmMain.SaveToPDF (const AFileName : String; APageSize: TPDFPageSize = psLetterPortrait);
+const
+  // (width, height) in PDF points at 72 dpi
+  PAGE_SIZES: array[TPDFPageSize] of array[0..1] of Single = (
+    (841.89, 595.28),   // A4 landscape
+    (595.28, 841.89),   // A4 portrait
+    (792.00, 612.00),   // Letter landscape
+    (612.00, 792.00)    // Letter portrait
+  );
+var
+  PageW, PageH: Single;
+  SavedZoom   : Single;
+  SavedScroll : TPointF;
+  Bounds      : TRectF;
+  FitZoom     : Single;
+  Stream      : TFileStream;
+  Document    : ISkDocument;
+  PageCanvas  : ISkCanvas;
+begin
+  PageW := PAGE_SIZES[APageSize][0];
+  PageH := PAGE_SIZES[APageSize][1];
+
+  // ── 1. Save view state ─────────────────────────────────────────────────────
+  SavedZoom   := FView.Zoom;
+  SavedScroll := FView.ScrollOffset;
+  try
+    // ── 2. Fit-to-page zoom + centred scroll ──────────────────────────────────
+    Bounds  := FView.ContentBounds;
+    FitZoom := Min(PageW / Bounds.Width, PageH / Bounds.Height);
+
+    FView.Zoom         := FitZoom;
+    FView.ScrollOffset := TPointF.Create(
+      -Bounds.Left * FitZoom + (PageW - Bounds.Width  * FitZoom) * 0.5,
+      -Bounds.Top  * FitZoom + (PageH - Bounds.Height * FitZoom) * 0.5);
+
+    // ── 3. Build the PDF document ─────────────────────────────────────────────
+    Stream   := TFileStream.Create(AFileName, fmCreate);
+    try
+      Document := TSkDocument.MakePDF(Stream);
+      if not Assigned(Document) then
+        raise Exception.Create('Failed to create Skia PDF document');
+
+      // BeginPage returns an ISkCanvas that draws in vector space
+      PageCanvas := Document.BeginPage(PageW, PageH);
+      try
+        PageCanvas.Clear(TAlphaColors.White);
+        FView.Render(PageCanvas, PageW, PageH);
+      finally
+        Document.EndPage;
+      end;
+
+      Document.Close;   // flushes and finalises the PDF stream
+    finally
+      Stream.Free;
+    end;
+
+  finally
+    // ── 4. Always restore view state ─────────────────────────────────────────
+    FView.Zoom         := SavedZoom;
+    FView.ScrollOffset := SavedScroll;
+  end;
+end;
+
+
+procedure TfrmMain.mnuPrintClick(Sender: TObject);
+begin
+  PrintDiagram;
 end;
 
 procedure TfrmMain.mnuUndoClick(Sender: TObject);
