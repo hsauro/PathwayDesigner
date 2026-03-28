@@ -79,9 +79,9 @@ Bug reports and feature requests are welcome!
 
 ## Screenshots
 
-v0.1.1
+v0.3
 
-<img width="300" alt="image" src="https://github.com/user-attachments/assets/74e136ff-86b7-40de-a967-8c1fbdfefce3" />
+<img width="2105" height="1372" alt="image" src="https://github.com/user-attachments/assets/6cf79f9a-7167-47b8-baa7-f86e8aac9af9" />
 
 
 ## License
