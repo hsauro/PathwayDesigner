@@ -60,7 +60,8 @@ This version adds:
 - Changing properties of species and reactions significantly improved
 - Added ability to show or hide reaction junction point
 - Create new color palette selection popup
-- 
+- Changed color format in json to hex RRGGBBAA
+  
 ### Not yet supported
 
 - Add modifier edges between species and reaction
