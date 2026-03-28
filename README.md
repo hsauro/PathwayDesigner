@@ -81,7 +81,7 @@ Bug reports and feature requests are welcome!
 
 v0.3
 
-<img width="2105" height="1372" alt="image" src="https://github.com/user-attachments/assets/6cf79f9a-7167-47b8-baa7-f86e8aac9af9" />
+<img width="2105" height="1372" alt="image" src="https://github.com/user-attachments/assets/c1ea04f9-e24b-49bf-b671-433f07438a51" />
 
 
 ## License
