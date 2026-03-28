@@ -54,11 +54,16 @@ This version adds:
 - Fixed small bug in antimony parsing
 - Added basic printing support
 - Added saving if networks as pdf or png files.
+
+### Versiion: 0.30
+
+- Changing properties of species and reactions significantly improved
+- Added ability to show or hide reaction junction point
+- Create new color palette selection popup
 - 
 ### Not yet supported
 
 - Add modifier edges between species and reaction
-- Ability to set colors etc of species nodes and reactions
 - Set font sizes for species names
 - Select different species node shapes
 - Positioning of species labels
