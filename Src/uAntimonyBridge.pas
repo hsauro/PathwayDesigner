@@ -338,6 +338,7 @@ var
   Part       : TParticipant;
   ReactionStr: string;
   i          : Integer;
+  Prefix     : string;
 begin
   Lines := TStringList.Create;
   try
@@ -357,16 +358,20 @@ begin
 
     // --- Species declarations (primary nodes only) ---
     // Id is the SBML unique identifier and the correct field for Antimony output.
+
+    // I don't think this is needed
+
     var HasSpec := False;
+    if AModel.Species.Count > 0 then
+       Lines.Add('  // Species');
     for S in AModel.Species do
     begin
       if S.IsAlias then Continue;
       if not HasSpec then
       begin
-        Lines.Add('  // Species');
         HasSpec := True;
       end;
-      var Prefix := '';
+      Prefix := '';
       if S.IsBoundary then Prefix := '$';
       if S.Compartment <> '' then
         Lines.Add(Format('  species %s%s in %s;', [Prefix, S.Id, S.Compartment]))
@@ -390,13 +395,15 @@ begin
           if i > 0 then ReactionStr := ReactionStr + ' + ';
           if Abs(Part.Stoichiometry - 1.0) > 1e-9 then
             ReactionStr := ReactionStr + FloatToStr(Part.Stoichiometry) + ' ';
-          ReactionStr := ReactionStr + Part.Species.Id;
+          Prefix := '';
+          if Part.Species.IsBoundary then Prefix := '$';
+          ReactionStr := ReactionStr + Prefix + Part.Species.Id;
         end;
 
         if R.IsReversible then
           ReactionStr := ReactionStr + ' -> '
         else
-          ReactionStr := ReactionStr + ' => ';
+          ReactionStr := ReactionStr + ' -> ';
 
         for i := 0 to R.Products.Count - 1 do
         begin
@@ -404,7 +411,8 @@ begin
           if i > 0 then ReactionStr := ReactionStr + ' + ';
           if Abs(Part.Stoichiometry - 1.0) > 1e-9 then
             ReactionStr := ReactionStr + FloatToStr(Part.Stoichiometry) + ' ';
-          ReactionStr := ReactionStr + Part.Species.Id;
+          if Part.Species.IsBoundary then Prefix := '$';
+          ReactionStr := ReactionStr + Prefix + Part.Species.Id;
         end;
 
         if R.KineticLaw <> '' then

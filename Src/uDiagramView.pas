@@ -76,6 +76,10 @@ type
 
   TRightClickTarget = (rctNone, rctPrimary, rctAlias, rctReaction);
 
+  // Fires after any selection change.
+  // ASpecies = the one selected species, or nil when 0 or 2+ are selected.
+  TSelectionChangedEvent = procedure(Sender: TObject; ASpecies: TSpeciesNode; AReaction : TReaction) of object;
+
   // Per-participant drag info: which handles to translate and their saved originals.
   TCtrlPtDragInfo = record
     Orig1  : TPointF;   // Ctrl1 position at drag-start
@@ -108,6 +112,8 @@ type
     FDragNodesSnapNum : Integer;
 
     FDraggedJunction : TReaction;
+
+    FOnSelectionChanged : TSelectionChangedEvent;
 
     // Bezier control point dragging
     FDraggedParticipant  : TParticipant;
@@ -266,6 +272,7 @@ type
     // from NiceBezierForReaction's smooth branch.
     procedure MaterialiseSmoothCtrlPts(R: TReaction);
 
+    procedure NotifySelectionChanged;
   public
     constructor Create(AModel: TBioModel; AOwnsModel: Boolean = False);
     destructor  Destroy; override;
@@ -312,6 +319,9 @@ type
     function  ContentBounds: TRectF;
     function  HasNonDefaultCompartments: Boolean;
 
+    procedure EffectiveSpeciesColors(S: TSpeciesNode; out AFill, ABorder: TAlphaColor; out ABorderWidth : Single);
+    procedure EffectiveReactionColors(R: TReaction; out AColor: TAlphaColor; out ALineWidth : Single);
+
     // Called by the form's hover timer after the delay elapses.
     procedure ShowTooltip;
 
@@ -329,6 +339,7 @@ type
     property DefaultBezier         : Boolean read FDefaultBezier         write FDefaultBezier;
     property DefaultSmoothJunction : Boolean read FDefaultSmoothJunction write FDefaultSmoothJunction;
     property OnNeedRepaint      : TNotifyEvent read FOnNeedRepaint write FOnNeedRepaint;
+    property OnSelectionChanged : TSelectionChangedEvent  read  FOnSelectionChanged write FOnSelectionChanged;
 
     // Undo / Redo
     procedure Undo;
@@ -1105,6 +1116,7 @@ begin
         Key := 0;
       end;
   end;
+  NotifySelectionChanged;
 end;
 
 // ===========================================================================
@@ -1250,6 +1262,7 @@ begin
       end;
     end;
   end;
+  NotifySelectionChanged;
 end;
 
 procedure TDiagramView.MouseMove(Shift: TShiftState; X, Y: Single);
@@ -1342,6 +1355,7 @@ begin
     isRubberBand:
       FRubberCurScr := ScreenPt;
   end;
+  NotifySelectionChanged;
 end;
 
 
@@ -1461,6 +1475,7 @@ begin
       FState := isSelect;
     end;
   end;
+  NotifySelectionChanged;
 end;
 
 procedure TDiagramView.MouseDblClick;
@@ -1485,6 +1500,56 @@ begin
   end;
 end;
 
+
+
+// Returns the effective fill and border colors for S, exactly as the
+// renderer sees them, including palette fallback and alias indicator.
+procedure TDiagramView.EffectiveSpeciesColors(S: TSpeciesNode; out AFill, ABorder: TAlphaColor; out ABorderWidth : Single);
+begin
+  if S.Style.HasCustomStyle then
+  begin
+    AFill   := S.Style.FillColor;
+    ABorder := S.Style.BorderColor;
+    ABorderWidth := S.Style.BorderWidth;
+    // A custom style may leave one field at 0 — fall back per field
+    if AFill   = 0 then AFill   := CLR_NODE_FILL;
+    if ABorder = 0 then ABorder := CLR_NODE_BORDER;
+  end
+  else if S.IsAlias and FShowAliasIndicator then
+  begin
+    AFill   := CLR_ALIAS_FILL;
+    ABorder := CLR_ALIAS_BORDER;
+    ABorderWidth := VIEW_BORDER_WIDTH;
+  end
+  else
+  begin
+    AFill   := CLR_NODE_FILL;
+    ABorder := CLR_NODE_BORDER;
+    ABorderWidth := VIEW_BORDER_WIDTH;
+  end;
+end;
+
+
+// Returns the effective fill and border colors for S, exactly as the
+// renderer sees them, including palette fallback and alias indicator.
+procedure TDiagramView.EffectiveReactionColors(R: TReaction; out AColor: TAlphaColor; out ALineWidth : Single);
+begin
+  if R.Style.HasCustomStyle then
+  begin
+    AColor   := R.Style.LineColor;
+    ALineWidth := R.Style.LineWidth;
+    // A custom style may leave one field at 0 — fall back per field
+    if AColor   = 0 then AColor   := CLR_REACTION;
+    if ALineWidth = 0 then ALineWidth := VIEW_LINE_WIDTH;
+  end
+  else
+  begin
+    AColor   := CLR_REACTION;
+    ALineWidth := VIEW_LINE_WIDTH;
+  end;
+end;
+
+
 procedure TDiagramView.SelectAll;
 var
   S : TSpeciesNode;
@@ -1492,6 +1557,7 @@ var
 begin
   for S in FModel.Species   do S.Selected := True;
   for R in FModel.Reactions do R.Selected := True;
+  NotifySelectionChanged;
 end;
 
 procedure TDiagramView.ToggleLinearSelected;
@@ -1945,6 +2011,39 @@ begin
   end;
 end;
 
+
+procedure TDiagramView.NotifySelectionChanged;
+var
+  SelS : TArray<TSpeciesNode>;
+  SelR : TArray<TReaction>;
+  S    : TSpeciesNode;
+  R    : TReaction;
+begin
+  if not Assigned(FOnSelectionChanged) then Exit;
+
+  SelS := FModel.SelectedSpecies;
+  SelR := FModel.SelectedReactions;
+
+  if (Length(SelS) = 1) and (Length(SelR) = 0) then
+  begin
+    S := SelS[0];
+    R := nil;
+  end
+  else if (Length(SelR) = 1) and (Length(SelS) = 0) then
+  begin
+    S := nil;
+    R := SelR[0];
+  end
+  else
+  begin
+    S := nil;
+    R := nil;
+  end;
+
+  FOnSelectionChanged(Self, S, R);
+end;
+
+
 // ---------------------------------------------------------------------------
 
 procedure TDiagramView.ApplySmoothJunction;
@@ -2284,7 +2383,9 @@ begin
   begin
     // Custom style takes priority; selection always overrides line color.
     if R.Style.HasCustomStyle then
-      LineColor := R.Style.LineColor
+      begin
+      if R.Style.LineColor  <> 0 then LineColor := R.Style.LineColor;
+      end
     else
       LineColor := CLR_REACTION;
 
@@ -2595,20 +2696,23 @@ begin
       BorderColor := CLR_JCT_BORDER;
     end;
 
-    JScr := W2S(EffectiveJunctionPos(R));
+    if R.Style.JunctionVisible then
+       begin
+       JScr := W2S(EffectiveJunctionPos(R));
 
-    FillPaint           := TSkPaint.Create;
-    FillPaint.AntiAlias := True;
-    FillPaint.Color     := FillColor;
-    FillPaint.Style     := TSkPaintStyle.Fill;
-    ACanvas.DrawCircle(JScr, Radius, FillPaint);
+       FillPaint           := TSkPaint.Create;
+       FillPaint.AntiAlias := True;
+       FillPaint.Color     := FillColor;
+       FillPaint.Style     := TSkPaintStyle.Fill;
+       ACanvas.DrawCircle(JScr, Radius, FillPaint);
 
-    RingPaint             := TSkPaint.Create;
-    RingPaint.AntiAlias   := True;
-    RingPaint.Color       := BorderColor;
-    RingPaint.Style       := TSkPaintStyle.Stroke;
-    RingPaint.StrokeWidth := W2SLen(1.0);
-    ACanvas.DrawCircle(JScr, Radius, RingPaint);
+       RingPaint             := TSkPaint.Create;
+       RingPaint.AntiAlias   := True;
+       RingPaint.Color       := BorderColor;
+       RingPaint.Style       := TSkPaintStyle.Stroke;
+       RingPaint.StrokeWidth := W2SLen(1.0);
+       ACanvas.DrawCircle(JScr, Radius, RingPaint);
+       end;
   end;
 end;
 
@@ -2964,12 +3068,14 @@ procedure TDiagramView.Undo;
 begin
   ClearTransientState;
   FUndoManager.Undo;
+  NotifySelectionChanged;
 end;
 
 procedure TDiagramView.Redo;
 begin
   ClearTransientState;
   FUndoManager.Redo;
+  NotifySelectionChanged;
 end;
 
 function TDiagramView.CanUndo: Boolean;

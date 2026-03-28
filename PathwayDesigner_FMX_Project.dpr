@@ -20,7 +20,8 @@ uses
   uRandomNetwork in 'Src\uRandomNetwork.pas',
   uUndoManager in 'Src\uUndoManager.pas',
   uSBMLExport in 'src\uSBMLExport.pas',
-  uSBMLBridge in 'src\uSBMLBridge.pas';
+  uSBMLBridge in 'src\uSBMLBridge.pas',
+  uColorPicker in 'src\uColorPicker.pas';
 
 {$R *.res}
 

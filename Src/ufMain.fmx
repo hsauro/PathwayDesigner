@@ -186,12 +186,6 @@ object frmMain: TfrmMain
       Text = 'lblStatus'
       TabOrder = 0
     end
-    object Label4: TLabel
-      Position.X = 1224.000000000000000000
-      Position.Y = 14.000000000000000000
-      Text = 'Label4'
-      TabOrder = 1
-    end
   end
   object Layout3: TLayout
     Align = Left
@@ -567,67 +561,93 @@ object frmMain: TfrmMain
       StopValue = claWhite
     end
     object GroupBox1: TGroupBox
-      Position.X = 8.000000000000000000
-      Position.Y = 26.000000000000000000
-      Size.Width = 209.000000000000000000
-      Size.Height = 247.000000000000000000
+      Position.X = 16.000000000000000000
+      Position.Y = 24.000000000000000000
+      Size.Width = 257.000000000000000000
+      Size.Height = 193.000000000000000000
       Size.PlatformDefault = False
       Text = ' Species '
       TabOrder = 0
-      object ccbSpeciesFillColor: TColorComboBox
-        DropDownKind = Custom
-        Color = claNull
-        DisableFocusEffect = False
-        DropDownCount = 14
-        ItemIndex = 147
-        Position.X = 15.000000000000000000
-        Position.Y = 90.000000000000000000
-        Size.Width = 178.000000000000000000
-        Size.Height = 22.000000000000000000
-        Size.PlatformDefault = False
-        TabOrder = 1
-        OnChange = ccbSpeciesFillColorChange
-      end
-      object ccbSpeciesBorderColor: TColorComboBox
-        DropDownKind = Custom
-        Color = claNull
-        DisableFocusEffect = False
-        DropDownCount = 14
-        ItemIndex = 147
-        Position.X = 15.000000000000000000
-        Position.Y = 131.000000000000000000
-        Size.Width = 178.000000000000000000
-        Size.Height = 22.000000000000000000
-        Size.PlatformDefault = False
-        TabOrder = 0
-        OnChange = ccbSpeciesBorderColorChange
-      end
       object Label1: TLabel
-        Position.X = 15.000000000000000000
-        Position.Y = 73.000000000000000000
+        Position.X = 35.000000000000000000
+        Position.Y = 51.000000000000000000
+        Size.Width = 52.000000000000000000
+        Size.Height = 17.000000000000000000
+        Size.PlatformDefault = False
         Text = 'Fill Color:'
-        TabOrder = 39
+        TabOrder = 36
         object Label3: TLabel
-          Position.Y = -50.000000000000000000
+          Position.X = -20.000000000000000000
+          Position.Y = -27.000000000000000000
           Text = 'Concentration:'
           TabOrder = 4
         end
       end
       object Label2: TLabel
         Position.X = 15.000000000000000000
-        Position.Y = 113.000000000000000000
+        Position.Y = 78.000000000000000000
+        Size.Width = 72.000000000000000000
+        Size.Height = 17.000000000000000000
+        Size.PlatformDefault = False
         Text = 'Border Color:'
-        TabOrder = 38
+        TabOrder = 35
+        object Label5: TLabel
+          Position.Y = 32.000000000000000000
+          Size.Width = 81.000000000000000000
+          Size.Height = 17.000000000000000000
+          Size.PlatformDefault = False
+          Text = 'Border Width:'
+          TabOrder = 7
+        end
       end
       object edtNumConcentration: TNumberBox
         Touch.InteractiveGestures = [LongTap, DoubleTap]
-        TabOrder = 40
+        TabOrder = 39
         Cursor = crIBeam
         ValueType = Float
         KeyboardType = NumbersAndPunctuation
-        Position.X = 15.000000000000000000
-        Position.Y = 44.000000000000000000
+        Position.X = 95.000000000000000000
+        Position.Y = 23.000000000000000000
         OnExit = edtNumConcentrationExit
+      end
+      object chkIsBoundarySpecies: TCheckBox
+        Position.X = 95.000000000000000000
+        Position.Y = 134.000000000000000000
+        Size.Width = 169.000000000000000000
+        Size.Height = 19.000000000000000000
+        Size.PlatformDefault = False
+        TabOrder = 40
+        Text = 'Boundary Species'
+        OnChange = chkIsBoundarySpeciesChange
+      end
+      object btnSpeciesFillColor: TColorButton
+        Color = claBlack
+        Position.X = 95.000000000000000000
+        Position.Y = 50.000000000000000000
+        TabOrder = 42
+        OnClick = btnSpeciesFillColorClick
+      end
+      object ColorAnimation3: TColorAnimation
+        Duration = 0.200000002980232200
+        StartValue = claWhite
+        StopValue = claWhite
+      end
+      object btnSpeciesBorderColor: TColorButton
+        Color = claBlack
+        Position.X = 95.000000000000000000
+        Position.Y = 77.000000000000000000
+        TabOrder = 41
+        OnClick = btnSpeciesBorderColorClick
+      end
+      object nbBorderWidth: TNumberBox
+        Touch.InteractiveGestures = [LongTap, DoubleTap]
+        TabOrder = 38
+        Cursor = crIBeam
+        ValueType = Float
+        KeyboardType = NumbersAndPunctuation
+        Position.X = 95.000000000000000000
+        Position.Y = 107.000000000000000000
+        OnExit = nbBorderWidthExit
       end
     end
     object moAntimony: TMemo
@@ -650,9 +670,73 @@ object frmMain: TfrmMain
       Size.Width = 100.000000000000000000
       Size.Height = 22.000000000000000000
       Size.PlatformDefault = False
-      TabOrder = 2
+      TabOrder = 3
       Text = 'Load Antimony'
       OnClick = btnLoadAntClick
+    end
+    object btnGetAntimony: TButton
+      Position.X = 121.000000000000000000
+      Position.Y = 766.000000000000000000
+      Size.Width = 100.000000000000000000
+      Size.Height = 22.000000000000000000
+      Size.PlatformDefault = False
+      TabOrder = 2
+      Text = 'Get Antimony'
+      OnClick = btnGetAntimonyClick
+    end
+    object GroupBox2: TGroupBox
+      Position.X = 24.000000000000000000
+      Position.Y = 224.000000000000000000
+      Size.Width = 249.000000000000000000
+      Size.Height = 217.000000000000000000
+      Size.PlatformDefault = False
+      Text = ' Reactions '
+      TabOrder = 4
+      object btnReactionColor: TColorButton
+        Color = claBlack
+        Position.X = 87.000000000000000000
+        Position.Y = 34.000000000000000000
+        TabOrder = 41
+        OnClick = btnReactionColorClick
+      end
+      object Label6: TLabel
+        Position.X = 47.000000000000000000
+        Position.Y = 35.000000000000000000
+        Size.Width = 52.000000000000000000
+        Size.Height = 17.000000000000000000
+        Size.PlatformDefault = False
+        Text = 'Color:'
+        TabOrder = 36
+      end
+      object chkShowJunctionPoint: TCheckBox
+        Position.X = 88.000000000000000000
+        Position.Y = 91.000000000000000000
+        Size.Width = 145.000000000000000000
+        Size.Height = 19.000000000000000000
+        Size.PlatformDefault = False
+        TabOrder = 39
+        Text = 'Show Junction Node'
+        OnChange = chkShowJunctionPointChange
+      end
+      object nbLineWidth: TNumberBox
+        Touch.InteractiveGestures = [LongTap, DoubleTap]
+        TabOrder = 38
+        Cursor = crIBeam
+        ValueType = Float
+        KeyboardType = NumbersAndPunctuation
+        Position.X = 88.000000000000000000
+        Position.Y = 64.000000000000000000
+        OnExit = nbLineWidthExit
+      end
+      object Label7: TLabel
+        Position.X = 8.000000000000000000
+        Position.Y = 67.000000000000000000
+        Size.Width = 81.000000000000000000
+        Size.Height = 17.000000000000000000
+        Size.PlatformDefault = False
+        Text = 'Border Width:'
+        TabOrder = 17
+      end
     end
   end
   object HoverTimer: TTimer

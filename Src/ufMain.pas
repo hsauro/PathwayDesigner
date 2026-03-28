@@ -34,7 +34,11 @@
 interface
 
 uses
-  System.SysUtils, System.Types, System.UITypes, System.Classes, System.Variants,
+  System.SysUtils,
+  System.Types,
+  System.UIConsts,
+  System.UITypes,
+  System.Classes, System.Variants,
   System.ImageList,
   Skia,
   FMX.Skia,
@@ -57,7 +61,11 @@ uses
   FMX.Objects,
   FMX.Colors,
   FMX.ListBox,
-  FMX.Ani, FMX.Edit, FMX.EditBox, FMX.NumberBox, FMX.Memo.Types, FMX.ScrollBox, FMX.Memo;
+  FMX.Ani,
+  FMX.Edit,
+  FMX.EditBox,
+  FMX.NumberBox, FMX.Memo.Types, FMX.ScrollBox, FMX.Memo,
+  uColorPicker;
 
 
 type
@@ -130,8 +138,6 @@ type
     ColorAnimation1: TColorAnimation;
     ColorAnimation2: TColorAnimation;
     GroupBox1: TGroupBox;
-    ccbSpeciesFillColor: TColorComboBox;
-    ccbSpeciesBorderColor: TColorComboBox;
     Label1: TLabel;
     Label2: TLabel;
     mnuSaveToSBML: TMenuItem;
@@ -154,7 +160,6 @@ type
     mnuDistribHorizontally: TMenuItem;
     mnuDistribVertically: TMenuItem;
     mnuLockUnLockNode: TMenuItem;
-    Label4: TLabel;
     HoverTimer: TTimer;
     Glyph10: TGlyph;
     Glyph11: TGlyph;
@@ -162,10 +167,25 @@ type
     Glyph13: TGlyph;
     Glyph14: TGlyph;
     Glyph15: TGlyph;
+    btnGetAntimony: TButton;
+    chkIsBoundarySpecies: TCheckBox;
+    btnSpeciesFillColor: TColorButton;
+    ColorAnimation3: TColorAnimation;
+    btnSpeciesBorderColor: TColorButton;
+    Label5: TLabel;
+    nbBorderWidth: TNumberBox;
+    GroupBox2: TGroupBox;
+    btnReactionColor: TColorButton;
+    Label6: TLabel;
+    chkShowJunctionPoint: TCheckBox;
+    nbLineWidth: TNumberBox;
+    Label7: TLabel;
     procedure btnAddBiUniClick(Sender: TObject);
     procedure btnAddSpeciesClick(Sender: TObject);
     procedure btnAddUniBiClick(Sender: TObject);
     procedure btnAddUniUniClick(Sender: TObject);
+    procedure btnSpeciesFillColorClick(Sender: TObject);
+    procedure btnGetAntimonyClick(Sender: TObject);
     procedure btnLayoutClick(Sender: TObject);
     procedure btnLinearUniUniClick(Sender: TObject);
     procedure btnLoadAntClick(Sender: TObject);
@@ -173,16 +193,18 @@ type
     procedure btnNewClick(Sender: TObject);
     procedure btnOpenClick(Sender: TObject);
     procedure btnRandomNetworkClick(Sender: TObject);
+    procedure btnReactionColorClick(Sender: TObject);
     procedure btnSaveClick(Sender: TObject);
     procedure btnSelectClick(Sender: TObject);
     procedure btnSetBezierClick(Sender: TObject);
     procedure btnSmoothJunctionClick(Sender: TObject);
+    procedure btnSpeciesBorderColorClick(Sender: TObject);
     procedure btnToggleAliasClick(Sender: TObject);
     procedure bynAddBiBiClick(Sender: TObject);
-    procedure ccbSpeciesBorderColorChange(Sender: TObject);
-    procedure ccbSpeciesFillColorChange(Sender: TObject);
     procedure chkDeckardChange(Sender: TObject);
+    procedure chkIsBoundarySpeciesChange(Sender: TObject);
     procedure chkRandomizeChange(Sender: TObject);
+    procedure chkShowJunctionPointChange(Sender: TObject);
     procedure edtNumConcentrationExit(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
     procedure FormCreate(Sender: TObject);
@@ -215,6 +237,8 @@ type
     procedure mnuRenameClick(Sender: TObject);
     procedure mnuSaveToSBMLClick(Sender: TObject);
     procedure mnuUndoClick(Sender: TObject);
+    procedure nbBorderWidthExit(Sender: TObject);
+    procedure nbLineWidthExit(Sender: TObject);
     procedure PaintBoxDblClick(Sender: TObject);
     procedure PaintBoxDraw(ASender: TObject; const ACanvas: ISkCanvas; const ADest:
         TRectF; const AOpacity: Single);
@@ -242,6 +266,12 @@ type
     FRightClickSpecies  : TSpeciesNode;
     FRightClickReaction : TReaction;
 
+    FColorPicker : TColorPickerPopup;
+    FActiveSwatch : TColorButton;
+
+    FSelectedSpecies  : TSpeciesNode;
+    FSelectedReaction : TReaction;
+
     // Recompute scrollbar Min/Max/ViewportSize from the model's content bounds.
     // Call whenever the diagram changes (add/remove/move).
     procedure UpdateScrollBars;
@@ -266,7 +296,9 @@ type
     procedure PrintDiagram;
 
     procedure DiagramNeedRepaint(Sender: TObject);
+    procedure DiagramSelectionChanged(Sender: TObject; ASpecies: TSpeciesNode; AReaction : TReaction);
 
+    procedure HandleColorChanged(Sender: TObject);
   public
     { Public declarations }
   end;
@@ -292,6 +324,67 @@ begin
   PaintBox.Redraw;
 end;
 
+procedure TfrmMain.DiagramSelectionChanged(Sender: TObject; ASpecies: TSpeciesNode; AReaction : TReaction);
+var Fill, Border: TAlphaColor;
+    BorderWidth : Single;
+begin
+  FSelectedSpecies  := ASpecies;
+  FSelectedReaction := AReaction;
+
+  if Assigned(ASpecies) then
+  begin
+    // Exactly one species selected — populate controls from its state
+    edtNumConcentration.Value    := ASpecies.InitialValue;
+    edtNumConcentration.Enabled := True;
+
+    FView.EffectiveSpeciesColors(ASpecies, Fill, Border, BorderWidth);
+
+    // Resolve the fill colour to whichever dropdown index matches;
+    // or store TAlphaColor directly in the ComboBox's Objects[] array.
+    btnSpeciesFillColor.Enabled := True;
+    btnSpeciesFillColor.Color := Fill;
+
+    btnSpeciesBorderColor.Enabled := True;
+    btnSpeciesBorderColor.Color := Border;
+
+    chkIsBoundarySpecies.IsChecked := ASpecies.IsBoundary;
+    chkIsBoundarySpecies.Enabled   := True;
+
+    nbBorderWidth.Enabled := True;
+    nbBorderWidth.Value := BorderWidth;
+  end
+  else if Assigned(AReaction) then
+  begin
+    // populate reaction property panel
+
+    FView.EffectiveReactionColors(AReaction, Fill, BorderWidth);
+    btnReactionColor.Enabled := True;
+    btnReactionColor.Color := Fill;
+    chkShowJunctionPoint.Enabled := True;
+    chkShowJunctionPoint.IsChecked := AReaction.Style.JunctionVisible;
+    nbLineWidth.Enabled := True;
+    if AReaction.Style.HasCustomStyle then
+       nbLineWidth.Value := AReaction.Style.LineWidth
+    else nbLineWidth.Value := 1.5;
+  end
+  else
+  begin
+    // nothing or mixed selection — clear/disable all panels
+    edtNumConcentration.Value := 0.0;
+    edtNumConcentration.Enabled := False;
+    btnSpeciesFillColor.Enabled     := False;
+    btnSpeciesBorderColor.Enabled   := False;
+    chkIsBoundarySpecies.Enabled    := False;
+    nbBorderWidth.Enabled := False;
+
+    btnReactionColor.Enabled := False;
+    nbLineWidth.Enabled := False;
+    chkShowJunctionPoint.Enabled := False;
+    // etc.
+  end;
+
+end;
+
 
 procedure TfrmMain.FormCreate(Sender: TObject);
 begin
@@ -310,6 +403,41 @@ begin
   btnToggleAlias.Text := 'Alias ✓';
 
   FView.OnNeedRepaint := DiagramNeedRepaint;
+  FView.OnSelectionChanged := DiagramSelectionChanged;
+
+  FColorPicker := TColorPickerPopup.Create(Self);
+  FColorPicker.OnColorChanged := HandleColorChanged;
+end;
+
+
+procedure TfrmMain.HandleColorChanged(Sender: TObject);
+var
+  Sel : TArray<TSpeciesNode>;
+begin
+  TColorButton(FActiveSwatch).Color := FColorPicker.Color;
+
+  if Assigned(FSelectedSpecies) then
+  begin
+    if FActiveSwatch = btnSpeciesFillColor then
+      FSelectedSpecies.Style.FillColor   := FColorPicker.Color
+    else
+      FSelectedSpecies.Style.BorderColor := FColorPicker.Color;
+    FSelectedSpecies.Style.HasCustomStyle := True;
+  end
+  else if Assigned(FSelectedReaction) then
+  begin
+    var S := FSelectedReaction.Style;   // copy the record out
+    if FActiveSwatch = btnReactionColor then
+      S.LineColor     := FColorPicker.Color
+    else
+      S.JunctionColor := FColorPicker.Color;
+    S.HasCustomStyle := True;
+    FSelectedReaction.Style := S;       // write the modified record back
+  end
+  else
+    Exit;
+
+  PaintBox.Redraw;
 end;
 
 
@@ -343,6 +471,18 @@ end;
 procedure TfrmMain.btnAddUniUniClick(Sender: TObject);
 begin
   FView.SetModeAddReaction(1, 1);   // 1 reactant, 1 product — click 2 species
+end;
+
+procedure TfrmMain.btnSpeciesFillColorClick(Sender: TObject);
+begin
+  FActiveSwatch := btnSpeciesFillColor;
+  FColorPicker.Color := btnSpeciesFillColor.Color;
+  FColorPicker.ShowAt(btnSpeciesFillColor);
+end;
+
+procedure TfrmMain.btnGetAntimonyClick(Sender: TObject);
+begin
+  moAntimony.Text := FView.ExportAntimony;
 end;
 
 procedure TfrmMain.btnLayoutClick(Sender: TObject);
@@ -446,6 +586,13 @@ begin
   PaintBox.Redraw;
 end;
 
+procedure TfrmMain.btnReactionColorClick(Sender: TObject);
+begin
+  FActiveSwatch := btnReactionColor;
+  FColorPicker.Color := btnReactionColor.Color;
+  FColorPicker.ShowAt(btnReactionColor);
+end;
+
 
 procedure TfrmMain.btnSaveClick(Sender: TObject);
 var
@@ -482,6 +629,13 @@ begin
   PaintBox.Redraw;   // redraws inner handles in teal when mode is active
 end;
 
+procedure TfrmMain.btnSpeciesBorderColorClick(Sender: TObject);
+begin
+  FActiveSwatch := btnSpeciesBorderColor;
+  FColorPicker.Color := btnSpeciesBorderColor.Color;
+  FColorPicker.ShowAt(btnSpeciesBorderColor);
+end;
+
 procedure TfrmMain.btnToggleAliasClick(Sender: TObject);
 begin
   // Toggle the alias indicator and update the button caption to show state.
@@ -498,28 +652,6 @@ begin
   FView.SetModeAddReaction(2, 2);   // 2 reactants, 2 products — click 4 species
 end;
 
-procedure TfrmMain.ccbSpeciesBorderColorChange(Sender: TObject);
-var S : TSpeciesNode;
-begin
-  for S in FModel.SelectedSpecies do
-      begin
-      S.Style.HasCustomStyle := True;
-      S.Style.BorderColor := ccbSpeciesBorderColor.Color;
-      end;
-  PaintBox.Redraw;
-end;
-
-procedure TfrmMain.ccbSpeciesFillColorChange(Sender: TObject);
-var S : TSpeciesNode;
-begin
-  for S in FModel.SelectedSpecies do
-      begin
-      S.Style.HasCustomStyle := True;
-      S.Style.FillColor := ccbSpeciesFillColor.Color;
-      end;
-  PaintBox.Redraw;
-end;
-
 procedure TfrmMain.chkDeckardChange(Sender: TObject);
 begin
    if chkDeckard.IsChecked then
@@ -528,12 +660,33 @@ begin
       bolDeckard := False;
 end;
 
+procedure TfrmMain.chkIsBoundarySpeciesChange(Sender: TObject);
+var S : TSpeciesNode;
+begin
+  for S in FModel.SelectedSpecies do
+      begin
+      S.IsBoundary := chkIsBoundarySpecies.IsChecked;
+      end;
+  PaintBox.Redraw;
+end;
+
+
 procedure TfrmMain.chkRandomizeChange(Sender: TObject);
 begin
    if chkRandomize.IsChecked then
       bolRandomize := True
    else
       bolRandomize := False;
+end;
+
+procedure TfrmMain.chkShowJunctionPointChange(Sender: TObject);
+var R : TReaction;
+begin
+  for R in FModel.SelectedReactions do
+      begin
+      R.Style.JunctionVisible := chkShowJunctionPoint.IsChecked;
+      end;
+  PaintBox.Redraw;
 end;
 
 procedure TfrmMain.SetScrollBarDefaults;
@@ -734,6 +887,7 @@ begin
   HoverTimer.Enabled := False;
   HoverTimer.Enabled := True;
 
+  lblStatus.Text := 'Coords X: ' + floattostr (X) + ', Y: ' + floattostr (Y);
   PaintBox.Redraw;
 end;
 
@@ -1320,6 +1474,28 @@ end;
 procedure TfrmMain.mnuUndoClick(Sender: TObject);
 begin
   FView.Undo;
+  PaintBox.Redraw;
+end;
+
+procedure TfrmMain.nbBorderWidthExit(Sender: TObject);
+var S : TSpeciesNode;
+begin
+  for S in FModel.SelectedSpecies do
+      begin
+      S.Style.HasCustomStyle := True;
+      S.Style.BorderWidth := nbBorderWidth.Value;
+      end;
+  PaintBox.Redraw;
+end;
+
+procedure TfrmMain.nbLineWidthExit(Sender: TObject);
+var R : TReaction;
+begin
+  for R in FModel.SelectedReactions do
+      begin
+      R.Style.HasCustomStyle := True;
+      R.Style.LineWidth := nbLineWidth.Value;
+      end;
   PaintBox.Redraw;
 end;
 

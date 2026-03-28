@@ -80,6 +80,7 @@ type
     LineWidth      : Single;       // reaction stroke width (0 = default)
     FontSize       : Single;       // species label font size (0 = global default)
     JunctionColor  : TAlphaColor;  // reaction junction handle fill
+    JunctionVisible: Boolean;
 
     // Returns a zeroed record with HasCustomStyle = False.
     class function Default: TVisualStyle; static;
@@ -176,7 +177,7 @@ type
     FIsJunctionSmooth: Boolean;   // True = collinear inner handles (C1 at junction)
   public
     // Visual style
-    FStyle           : TVisualStyle;
+    Style           : TVisualStyle;
 
     constructor Create(const AId : string; AJX, AJY : Single);
     destructor  Destroy; override;
@@ -191,7 +192,6 @@ type
     property IsLinear        : Boolean read FIsLinear        write FIsLinear;
     property IsBezier        : Boolean read FIsBezier        write FIsBezier;
     property IsJunctionSmooth: Boolean read FIsJunctionSmooth write FIsJunctionSmooth;
-    property Style           : TVisualStyle read FStyle write FStyle;
 
     function ReactantSpecies(AIndex: Integer): TSpeciesNode;
     function ProductSpecies (AIndex: Integer): TSpeciesNode;
@@ -423,6 +423,7 @@ begin
   Result.LineWidth      := 0;
   Result.FontSize       := 0;
   Result.JunctionColor  := 0;
+  Result.JunctionVisible:= True;
 end;
 
 function TVisualStyle.ToJSON: TJSONObject;
@@ -438,6 +439,7 @@ begin
   Result.AddPair('lineWidth',   TJSONNumber.Create(LineWidth));
   Result.AddPair('fontSize',    TJSONNumber.Create(FontSize));
   Result.AddPair('junctionColor', TJSONNumber.Create(Integer(JunctionColor)));
+  Result.AddPair('junctionVisible', TJSONBool.Create(JunctionVisible));
 end;
 
 procedure TVisualStyle.FromJSON(AObj: TJSONObject);
@@ -458,6 +460,14 @@ procedure TVisualStyle.FromJSON(AObj: TJSONObject);
     else                Result := 0;
   end;
 
+  function GetBoolean(const K: string): Boolean;
+  var V: TJSONValue;
+  begin
+    V := AObj.GetValue(K);
+    if Assigned(V) then Result := (V as TJSONBool).AsBoolean
+    else                Result := True;
+  end;
+
 begin
   HasCustomStyle := True;
   FillColor      := GetColor('fillColor');
@@ -468,6 +478,7 @@ begin
   LineWidth      := GetFloat('lineWidth');
   FontSize       := GetFloat('fontSize');
   JunctionColor  := GetColor('junctionColor');
+  JunctionVisible:= GetBoolean('junctionVisible');
 end;
 
 // ===========================================================================
@@ -605,7 +616,7 @@ begin
   FIsLinear      := False;
   FIsBezier      := False;
   FIsJunctionSmooth := False;
-  FStyle        := TVisualStyle.Default;
+  Style        := TVisualStyle.Default;
 end;
 
 destructor TReaction.Destroy;
@@ -677,8 +688,8 @@ begin
   end;
   Result.AddPair('products', Arr);
 
-  if FStyle.HasCustomStyle then
-    Result.AddPair('style', FStyle.ToJSON);
+  if Style.HasCustomStyle then
+    Result.AddPair('style', Style.ToJSON);
 end;
 
 // ===========================================================================
@@ -1190,7 +1201,7 @@ begin
 
     // Visual style (v3+)
     var StyleVal := RctObj.GetValue('style');
-    if Assigned(StyleVal) then R.FStyle.FromJSON(StyleVal as TJSONObject);
+    if Assigned(StyleVal) then R.Style.FromJSON(StyleVal as TJSONObject);
 
     // Helper to load a participant object with optional control points
     var LoadParticipant := procedure(APObj: TJSONObject; AList: TObjectList<TParticipant>)

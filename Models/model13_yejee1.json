@@ -11,27 +11,27 @@
   "parameters": [
     {
       "variable": "k0",
-      "expression": "0"
+      "expression": "24.72"
     },
     {
       "variable": "k2",
-      "expression": "0"
+      "expression": "15.4"
     },
     {
       "variable": "k3",
-      "expression": "0"
+      "expression": "54.75"
     },
     {
       "variable": "k4",
-      "expression": "0"
+      "expression": "315.73"
     },
     {
       "variable": "k5",
-      "expression": "0"
+      "expression": "24.94"
     },
     {
       "variable": "k6",
-      "expression": "0"
+      "expression": "53.6"
     }
   ],
   "assignmentRules": [
@@ -44,7 +44,7 @@
       "w": 80.0,
       "h": 36.0,
       "initialValue": 0.0,
-      "isBoundary": false,
+      "isBoundary": true,
       "isConstant": false
     },
     {
@@ -53,7 +53,7 @@
       "y": 311.349212646484,
       "w": 80.0,
       "h": 36.0,
-      "initialValue": 0.0,
+      "initialValue": 7.0,
       "isBoundary": false,
       "isConstant": false
     },
@@ -63,7 +63,7 @@
       "y": 544.266296386719,
       "w": 80.0,
       "h": 36.0,
-      "initialValue": 0.0,
+      "initialValue": 1.0,
       "isBoundary": false,
       "isConstant": false
     },
@@ -73,7 +73,7 @@
       "y": 239.490661621094,
       "w": 80.0,
       "h": 36.0,
-      "initialValue": 0.0,
+      "initialValue": 5.0,
       "isBoundary": false,
       "isConstant": false
     },
@@ -83,7 +83,7 @@
       "y": 441.775787353516,
       "w": 80.0,
       "h": 36.0,
-      "initialValue": 0.0,
+      "initialValue": 3.0,
       "isBoundary": false,
       "isConstant": false
     },
@@ -94,7 +94,7 @@
       "w": 80.0,
       "h": 36.0,
       "initialValue": 0.0,
-      "isBoundary": false,
+      "isBoundary": true,
       "isConstant": false
     },
     {
@@ -103,7 +103,7 @@
       "y": 109.965812683105,
       "w": 80.0,
       "h": 36.0,
-      "initialValue": 0.0,
+      "initialValue": 4.0,
       "isBoundary": false,
       "isConstant": false
     }
