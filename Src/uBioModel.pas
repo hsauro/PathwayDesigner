@@ -337,6 +337,57 @@ const
   JSON_VERSION = 3;
   DEFAULT_COMPARTMENT = 'defaultCompartment';
 
+  // Convert Delphi TAlphaColor ($AARRGGBB) → '#RRGGBBAA' web-standard hex string.
+function AlphaColorToHex(AColor: TAlphaColor): string;
+var
+  A, R, G, B: Byte;
+begin
+  A := (AColor shr 24) and $FF;
+  R := (AColor shr 16) and $FF;
+  G := (AColor shr  8) and $FF;
+  B :=  AColor         and $FF;
+  Result := Format('#%.2x%.2x%.2x%.2x', [R, G, B, A]);
+end;
+
+
+// Parse '#RRGGBBAA' (or '#RRGGBB', fully opaque) → Delphi TAlphaColor ($AARRGGBB).
+// Raises EConvertError on malformed input.
+function HexToAlphaColor(const AHex: string): TAlphaColor;
+var
+  S    : string;
+  R, G, B, A: Byte;
+begin
+  S := AHex.Trim;
+  if (S <> '') and (S[1] = '#') then
+    S := Copy(S, 2, MaxInt);
+
+  case Length(S) of
+    6:  // '#RRGGBB' — no alpha, assume fully opaque
+      begin
+        R := StrToInt('$' + Copy(S, 1, 2));
+        G := StrToInt('$' + Copy(S, 3, 2));
+        B := StrToInt('$' + Copy(S, 5, 2));
+        A := $FF;
+      end;
+    8:  // '#RRGGBBAA'
+      begin
+        R := StrToInt('$' + Copy(S, 1, 2));
+        G := StrToInt('$' + Copy(S, 3, 2));
+        B := StrToInt('$' + Copy(S, 5, 2));
+        A := StrToInt('$' + Copy(S, 7, 2));
+      end;
+  else
+    raise EConvertError.CreateFmt(
+      'HexToAlphaColor: expected #RRGGBB or #RRGGBBAA, got "%s"', [AHex]);
+  end;
+
+  Result := (TAlphaColor(A) shl 24) or
+            (TAlphaColor(R) shl 16) or
+            (TAlphaColor(G) shl  8) or
+             TAlphaColor(B);
+end;
+
+
 function SanitizeSBMLId(const Id: string): string;
 var
   i: Integer;
@@ -426,30 +477,37 @@ begin
   Result.JunctionVisible:= True;
 end;
 
+
 function TVisualStyle.ToJSON: TJSONObject;
 begin
   Result := TJSONObject.Create;
-  // Colors are TAlphaColor (Cardinal/UInt32). Cast through Integer so that
-  // TJSONNumber receives a signed 32-bit value and round-trips correctly.
-  Result.AddPair('fillColor',   TJSONNumber.Create(Integer(FillColor)));
-  Result.AddPair('borderColor', TJSONNumber.Create(Integer(BorderColor)));
-  Result.AddPair('labelColor',  TJSONNumber.Create(Integer(LabelColor)));
-  Result.AddPair('borderWidth', TJSONNumber.Create(BorderWidth));
-  Result.AddPair('lineColor',   TJSONNumber.Create(Integer(LineColor)));
-  Result.AddPair('lineWidth',   TJSONNumber.Create(LineWidth));
-  Result.AddPair('fontSize',    TJSONNumber.Create(FontSize));
-  Result.AddPair('junctionColor', TJSONNumber.Create(Integer(JunctionColor)));
+  Result.AddPair('fillColor',       AlphaColorToHex(FillColor));
+  Result.AddPair('borderColor',     AlphaColorToHex(BorderColor));
+  Result.AddPair('labelColor',      AlphaColorToHex(LabelColor));
+  Result.AddPair('borderWidth',     TJSONNumber.Create(BorderWidth));
+  Result.AddPair('lineColor',       AlphaColorToHex(LineColor));
+  Result.AddPair('lineWidth',       TJSONNumber.Create(LineWidth));
+  Result.AddPair('fontSize',        TJSONNumber.Create(FontSize));
+  Result.AddPair('junctionColor',   AlphaColorToHex(JunctionColor));
   Result.AddPair('junctionVisible', TJSONBool.Create(JunctionVisible));
 end;
+
 
 procedure TVisualStyle.FromJSON(AObj: TJSONObject);
 
   function GetColor(const K: string): TAlphaColor;
-  var V: TJSONValue;
+  var
+    V: TJSONValue;
   begin
     V := AObj.GetValue(K);
-    if Assigned(V) then Result := TAlphaColor((V as TJSONNumber).AsInt)
-    else                Result := 0;
+    if not Assigned(V) then
+      Exit(0);
+    // New format: hex string '#rrggbbaa'
+    if V is TJSONString then
+      Result := HexToAlphaColor(V.Value)
+    else
+      // Legacy format: signed integer (old files round-trip correctly)
+      Result := TAlphaColor(Integer((V as TJSONNumber).AsInt));
   end;
 
   function GetFloat(const K: string): Single;
@@ -469,17 +527,19 @@ procedure TVisualStyle.FromJSON(AObj: TJSONObject);
   end;
 
 begin
-  HasCustomStyle := True;
-  FillColor      := GetColor('fillColor');
-  BorderColor    := GetColor('borderColor');
-  LabelColor     := GetColor('labelColor');
-  BorderWidth    := GetFloat('borderWidth');
-  LineColor      := GetColor('lineColor');
-  LineWidth      := GetFloat('lineWidth');
-  FontSize       := GetFloat('fontSize');
-  JunctionColor  := GetColor('junctionColor');
-  JunctionVisible:= GetBoolean('junctionVisible');
+  HasCustomStyle  := True;
+  FillColor       := GetColor('fillColor');
+  BorderColor     := GetColor('borderColor');
+  LabelColor      := GetColor('labelColor');
+  BorderWidth     := GetFloat('borderWidth');
+  LineColor       := GetColor('lineColor');
+  LineWidth       := GetFloat('lineWidth');
+  FontSize        := GetFloat('fontSize');
+  JunctionColor   := GetColor('junctionColor');
+  JunctionVisible := GetBoolean('junctionVisible');
 end;
+
+
 
 // ===========================================================================
 //  TParticipant

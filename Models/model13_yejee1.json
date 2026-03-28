@@ -65,7 +65,18 @@
       "h": 36.0,
       "initialValue": 1.0,
       "isBoundary": false,
-      "isConstant": false
+      "isConstant": false,
+      "style": {
+        "fillColor": "#FFE0B2FF",
+        "borderColor": "#CC3300FF",
+        "labelColor": "#00000000",
+        "borderWidth": 0.0,
+        "lineColor": "#00000000",
+        "lineWidth": 0.0,
+        "fontSize": 0.0,
+        "junctionColor": "#00000000",
+        "junctionVisible": true
+      }
     },
     {
       "id": "S1",
@@ -75,7 +86,18 @@
       "h": 36.0,
       "initialValue": 5.0,
       "isBoundary": false,
-      "isConstant": false
+      "isConstant": false,
+      "style": {
+        "fillColor": "#FFF9C4FF",
+        "borderColor": "#FF8800FF",
+        "labelColor": "#00000000",
+        "borderWidth": 0.0,
+        "lineColor": "#00000000",
+        "lineWidth": 0.0,
+        "fontSize": 0.0,
+        "junctionColor": "#00000000",
+        "junctionVisible": true
+      }
     },
     {
       "id": "S3",
@@ -85,7 +107,18 @@
       "h": 36.0,
       "initialValue": 3.0,
       "isBoundary": false,
-      "isConstant": false
+      "isConstant": false,
+      "style": {
+        "fillColor": "#E8F5E9FF",
+        "borderColor": "#00AA44FF",
+        "labelColor": "#00000000",
+        "borderWidth": 0.0,
+        "lineColor": "#00000000",
+        "lineWidth": 0.0,
+        "fontSize": 0.0,
+        "junctionColor": "#00000000",
+        "junctionVisible": true
+      }
     },
     {
       "id": "S7",
