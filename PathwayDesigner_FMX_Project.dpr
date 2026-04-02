@@ -1,6 +1,7 @@
 program PathwayDesigner_FMX_Project;
 
 uses
+  uFontHandling in 'src\uFontHandling.pas',
   System.StartUpCopy,
   FMX.Forms,
   FMX.Skia,
@@ -22,6 +23,7 @@ uses
   uSBMLExport in 'src\uSBMLExport.pas',
   uSBMLBridge in 'src\uSBMLBridge.pas',
   uColorPicker in 'src\uColorPicker.pas';
+
 
 {$R *.res}
 

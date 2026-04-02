@@ -1,4 +1,4 @@
-unit uSBMLExport;
+ï»¿unit uSBMLExport;
 
 {
   uSBMLExport.pas
@@ -126,7 +126,6 @@ const
   LAYOUT_NS  = 'http://www.sbml.org/sbml/level3/version1/layout/version1';
   XSI_NS     = 'http://www.w3.org/2001/XMLSchema-instance';
 
-  JUNCTION_GLYPH_SIZE = 10;
 
 // ===========================================================================
 //  Helpers
@@ -297,7 +296,7 @@ begin
       try
         AST := Parser.Parse;
       except
-        Exit;  // unparseable kinetic law — omit <kineticLaw> entirely
+        Exit;  // unparseable kinetic law ï¿½ omit <kineticLaw> entirely
       end;
       try
         SB := TStringBuilder.Create;
@@ -456,7 +455,7 @@ begin
         SB.AppendLine('        </listOfProducts>');
       end;
 
-      // Kinetic law — convert infix to MathML
+      // Kinetic law ï¿½ convert infix to MathML
       KL := KineticLawToMathML(R.KineticLaw, '        ');
       if KL <> '' then
         SB.AppendLine(KL);
@@ -486,14 +485,17 @@ var
   JX, JY     : Single;
   MaxX, MaxY : Single;
   BP         : TPointF;
+  i          : Integer;
+  FanTotal   : Integer;
+  C1, C2     : TPointF;
 
   procedure AppendCurve(const Indent: string;
-                        IsBez, BezSet: Boolean;
+                        IsBez: Boolean;
                         X1, Y1, C1X, C1Y, C2X, C2Y, X2, Y2: Single);
   begin
     SB.AppendLine(Indent + '<layout:curve>');
     SB.AppendLine(Indent + '  <layout:listOfCurveSegments>');
-    if IsBez and BezSet then
+    if IsBez then
     begin
       SB.AppendLine(Indent + '    <layout:curveSegment xsi:type="CubicBezier">');
       SB.AppendLine(Indent + '      <layout:start layout:x="'      + F(X1)  + '" layout:y="' + F(Y1)  + '"/>');
@@ -511,6 +513,79 @@ var
     end;
     SB.AppendLine(Indent + '  </layout:listOfCurveSegments>');
     SB.Append    (Indent + '</layout:curve>');
+  end;
+
+  // Mirrors TDiagramView.ComputeAutoCtrlPts exactly.
+  // Conceptual endpoints (same convention as the renderer):
+  //   Reactant (AJunctionAtEnd=True):  AStart = Species.Center, AEnd = Junction
+  //   Product  (AJunctionAtEnd=False): AStart = Junction,       AEnd = Species.Center
+  procedure ComputeAutoCtrlPts(const AStart, AEnd: TPointF;
+                                AFanIndex, AFanTotal: Integer;
+                                AJunctionAtEnd: Boolean;
+                                out ACtrl1, ACtrl2: TPointF);
+  const
+    CTRL_DIST_FRAC = 0.35;
+    FAN_SPREAD     = 50.0;
+  var
+    Dir    : TPointF;
+    Perp   : TPointF;
+    Len    : Single;
+    Offset : Single;
+  begin
+    Dir.X := AEnd.X - AStart.X;
+    Dir.Y := AEnd.Y - AStart.Y;
+    Len   := Sqrt(Dir.X * Dir.X + Dir.Y * Dir.Y);
+    if Len < 1.0 then
+    begin
+      ACtrl1 := AStart;
+      ACtrl2 := AEnd;
+      Exit;
+    end;
+    Dir.X := Dir.X / Len;
+    Dir.Y := Dir.Y / Len;
+    // Perpendicular (CCW)
+    Perp.X := -Dir.Y;
+    Perp.Y :=  Dir.X;
+    if AFanTotal <= 1 then
+      Offset := 0
+    else
+      Offset := (AFanIndex - (AFanTotal - 1) * 0.5) * FAN_SPREAD;
+    if AJunctionAtEnd then
+    begin
+      // Reactant: Ctrl1 = no fan offset (clean exit from species),
+      //           Ctrl2 = fan offset at junction side
+      ACtrl1.X := AStart.X + Dir.X * Len * CTRL_DIST_FRAC;
+      ACtrl1.Y := AStart.Y + Dir.Y * Len * CTRL_DIST_FRAC;
+      ACtrl2.X := AEnd.X   - Dir.X * Len * CTRL_DIST_FRAC + Perp.X * Offset;
+      ACtrl2.Y := AEnd.Y   - Dir.Y * Len * CTRL_DIST_FRAC + Perp.Y * Offset;
+    end
+    else
+    begin
+      // Product:  Ctrl1 = fan offset at junction side,
+      //           Ctrl2 = no fan offset (clean arrival at species)
+      ACtrl1.X := AStart.X + Dir.X * Len * CTRL_DIST_FRAC + Perp.X * Offset;
+      ACtrl1.Y := AStart.Y + Dir.Y * Len * CTRL_DIST_FRAC + Perp.Y * Offset;
+      ACtrl2.X := AEnd.X   - Dir.X * Len * CTRL_DIST_FRAC;
+      ACtrl2.Y := AEnd.Y   - Dir.Y * Len * CTRL_DIST_FRAC;
+    end;
+  end;
+
+  // Returns the effective Bezier control points for a participant:
+  // user-placed values when CtrlPtsSet=True, otherwise auto-computed.
+  procedure GetCtrlPts(APart: TParticipant;
+                       const AStart, AEnd: TPointF;
+                       AFanIndex, AFanTotal: Integer;
+                       AJunctionAtEnd: Boolean;
+                       out ACtrl1, ACtrl2: TPointF);
+  begin
+    if APart.CtrlPtsSet then
+    begin
+      ACtrl1 := APart.Ctrl1;
+      ACtrl2 := APart.Ctrl2;
+    end
+    else
+      ComputeAutoCtrlPts(AStart, AEnd, AFanIndex, AFanTotal, AJunctionAtEnd,
+                         ACtrl1, ACtrl2);
   end;
 
 begin
@@ -571,51 +646,59 @@ begin
                       + R.Id + '" layout:reaction="' + R.Id + '">');
       SB.AppendLine('            <layout:boundingBox>');
       SB.AppendLine('              <layout:position layout:x="'
-                      + F(JX - JUNCTION_GLYPH_SIZE * 0.5)
-                      + '" layout:y="' + F(JY - JUNCTION_GLYPH_SIZE * 0.5) + '"/>');
-      SB.AppendLine('              <layout:dimensions layout:width="'
-                      + F(JUNCTION_GLYPH_SIZE) + '" layout:height="' + F(JUNCTION_GLYPH_SIZE) + '"/>');
+                      + F(JX) + '" layout:y="' + F(JY) + '"/>');
+      SB.AppendLine('              <layout:dimensions layout:width="0" layout:height="0"/>');
       SB.AppendLine('            </layout:boundingBox>');
 
       SB.AppendLine('            <layout:listOfSpeciesReferenceGlyphs>');
 
       // Reactant arcs (species boundary -> junction)
-      for Part in R.Reactants do
+      FanTotal := R.Reactants.Count;
+      for i := 0 to FanTotal - 1 do
       begin
+        Part := R.Reactants[i];
         if not GlyphIdMap.ContainsKey(Part.Species.Id) then Continue;
         BP := RectBoundaryIntersect(Part.Species.Center,
                 Part.Species.HalfW, Part.Species.HalfH,
                 TPointF.Create(JX, JY));
+        // Control points use Species.Center as the conceptual start (same as renderer)
+        GetCtrlPts(Part, Part.Species.Center, TPointF.Create(JX, JY),
+                   i, FanTotal, True {junction at end}, C1, C2);
         SB.AppendLine('              <layout:speciesReferenceGlyph'
           + ' layout:id="srg_' + R.Id + '_sub_' + Part.Species.Id + '"'
           + ' layout:speciesGlyph="' + GlyphIdMap[Part.Species.Id] + '"'
           + ' layout:role="substrate">');
         AppendCurve('              ',
-          R.IsBezier, Part.CtrlPtsSet,
+          R.IsBezier,
           BP.X, BP.Y,
-          Part.Ctrl1.X, Part.Ctrl1.Y,
-          Part.Ctrl2.X, Part.Ctrl2.Y,
+          C1.X, C1.Y,
+          C2.X, C2.Y,
           JX, JY);
         SB.AppendLine('');
         SB.AppendLine('              </layout:speciesReferenceGlyph>');
       end;
 
-      // Product arcs (junction -> species boundary); control points reversed
-      for Part in R.Products do
+      // Product arcs (junction -> species boundary)
+      FanTotal := R.Products.Count;
+      for i := 0 to FanTotal - 1 do
       begin
+        Part := R.Products[i];
         if not GlyphIdMap.ContainsKey(Part.Species.Id) then Continue;
         BP := RectBoundaryIntersect(Part.Species.Center,
                 Part.Species.HalfW, Part.Species.HalfH,
                 TPointF.Create(JX, JY));
+        // Control points use Junction as conceptual start, Species.Center as end
+        GetCtrlPts(Part, TPointF.Create(JX, JY), Part.Species.Center,
+                   i, FanTotal, False {junction at start}, C1, C2);
         SB.AppendLine('              <layout:speciesReferenceGlyph'
           + ' layout:id="srg_' + R.Id + '_prod_' + Part.Species.Id + '"'
           + ' layout:speciesGlyph="' + GlyphIdMap[Part.Species.Id] + '"'
           + ' layout:role="product">');
         AppendCurve('              ',
-          R.IsBezier, Part.CtrlPtsSet,
+          R.IsBezier,
           JX, JY,
-          Part.Ctrl2.X, Part.Ctrl2.Y,
-          Part.Ctrl1.X, Part.Ctrl1.Y,
+          C1.X, C1.Y,
+          C2.X, C2.Y,
           BP.X, BP.Y);
         SB.AppendLine('');
         SB.AppendLine('              </layout:speciesReferenceGlyph>');

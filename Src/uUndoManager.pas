@@ -119,6 +119,31 @@ type
     procedure Redo; override;
   end;
 
+
+// ===========================================================================
+//  TStyleEditCmd
+//  Stores per-object visual style before/after a colour/width change.
+// ===========================================================================
+
+  TStyleEditCmd = class(TDiagramCommand)
+  private
+    FModel         : TBioModel;
+    FSpeciesBefore : TDictionary<string, TVisualStyle>;
+    FSpeciesAfter  : TDictionary<string, TVisualStyle>;
+    FReactionBefore: TDictionary<string, TVisualStyle>;
+    FReactionAfter : TDictionary<string, TVisualStyle>;
+    procedure ApplySpecies  (AStyles: TDictionary<string, TVisualStyle>);
+    procedure ApplyReactions(AStyles: TDictionary<string, TVisualStyle>);
+  public
+    constructor Create(AModel: TBioModel;
+                       ASpeciesBefore,  ASpeciesAfter  : TDictionary<string, TVisualStyle>;
+                       AReactionBefore, AReactionAfter : TDictionary<string, TVisualStyle>);
+    destructor  Destroy; override;
+    function    Description: string; override;
+    procedure   Undo; override;
+    procedure   Redo; override;
+  end;
+
 // ===========================================================================
 //  TDragCtrlPtCmd
 //  Bezier control-point drag.
@@ -295,6 +320,73 @@ procedure TMoveNodesCmd.Redo;
 begin
   ApplySpecies  (FSpeciesAfter);
   ApplyJunctions(FJunctionAfter);
+end;
+
+
+// ===========================================================================
+//  TStyleEditCmd
+// ===========================================================================
+
+constructor TStyleEditCmd.Create(AModel: TBioModel;
+  ASpeciesBefore, ASpeciesAfter   : TDictionary<string, TVisualStyle>;
+  AReactionBefore, AReactionAfter : TDictionary<string, TVisualStyle>);
+begin
+  inherited Create;
+  FModel          := AModel;
+  FSpeciesBefore  := ASpeciesBefore;
+  FSpeciesAfter   := ASpeciesAfter;
+  FReactionBefore := AReactionBefore;
+  FReactionAfter  := AReactionAfter;
+end;
+
+destructor TStyleEditCmd.Destroy;
+begin
+  FSpeciesBefore.Free;
+  FSpeciesAfter.Free;
+  FReactionBefore.Free;
+  FReactionAfter.Free;
+  inherited;
+end;
+
+function TStyleEditCmd.Description: string;
+begin
+  Result := 'Change style';
+end;
+
+procedure TStyleEditCmd.ApplySpecies(AStyles: TDictionary<string, TVisualStyle>);
+var
+  Pair : TPair<string, TVisualStyle>;
+  S    : TSpeciesNode;
+begin
+  for Pair in AStyles do
+  begin
+    S := FModel.FindSpeciesById(Pair.Key);
+    if Assigned(S) then S.Style := Pair.Value;
+  end;
+end;
+
+procedure TStyleEditCmd.ApplyReactions(AStyles: TDictionary<string, TVisualStyle>);
+var
+  Pair : TPair<string, TVisualStyle>;
+  R    : TReaction;
+begin
+  for Pair in AStyles do
+  begin
+    R := FModel.FindReactionById(Pair.Key);
+    if Assigned(R) then R.Style := Pair.Value;
+  end;
+end;
+
+procedure TStyleEditCmd.Undo;
+begin
+  ApplySpecies  (FSpeciesBefore);
+  ApplyReactions(FReactionBefore);
+end;
+
+procedure TStyleEditCmd.Redo;
+begin
+  ApplySpecies  (FSpeciesAfter);
+  ApplyReactions(FReactionAfter);
 end;
 
 // ===========================================================================

@@ -77,8 +77,24 @@ type
   TRightClickTarget = (rctNone, rctPrimary, rctAlias, rctReaction);
 
   // Fires after any selection change.
-  // ASpecies = the one selected species, or nil when 0 or 2+ are selected.
-  TSelectionChangedEvent = procedure(Sender: TObject; ASpecies: TSpeciesNode; AReaction : TReaction) of object;
+
+// Carries the full selection state after any change.
+  TSelectionInfo = record
+    Species   : TArray<TSpeciesNode>;
+    Reactions : TArray<TReaction>;
+    function SpeciesCount : Integer; inline;
+    function ReactionCount: Integer; inline;
+    function TotalCount   : Integer; inline;
+    // Convenience accessors — return nil when count <> 1
+    function SingleSpecies : TSpeciesNode;
+    function SingleReaction: TReaction;
+    // True when the selection contains at least one species and one reaction
+    function IsMixed: Boolean; inline;
+    // True when every selected item is the same concrete type
+    function IsHomogeneous: Boolean; inline;
+  end;
+
+  TSelectionChangedEvent = procedure(Sender: TObject; const AInfo: TSelectionInfo) of object;
 
   // Per-participant drag info: which handles to translate and their saved originals.
   TCtrlPtDragInfo = record
@@ -300,6 +316,8 @@ type
     function  CreateAliasAt(APrimary: TSpeciesNode): TSpeciesNode;
     procedure GoToPrimary  (AAlias: TSpeciesNode);
 
+    procedure PushUndoCmd(ACmd: TDiagramCommand);
+
     procedure AlignSelection(AMode: TAlignMode);
 
     // --- Antimony import / export ---
@@ -421,6 +439,43 @@ const
 
   VIEW_CTRL_RADIUS  = 4.0;   // world px, handle circle radius
   VIEW_CTRL_HIT     = 8.0;   // screen px, hit tolerance
+
+
+// ===========================================================================
+//  TSelectionInfo
+// ===========================================================================
+
+function TSelectionInfo.SpeciesCount: Integer;
+begin Result := Length(Species); end;
+
+function TSelectionInfo.ReactionCount: Integer;
+begin Result := Length(Reactions); end;
+
+function TSelectionInfo.TotalCount: Integer;
+begin Result := Length(Species) + Length(Reactions); end;
+
+function TSelectionInfo.SingleSpecies: TSpeciesNode;
+begin
+  if (Length(Species) = 1) and (Length(Reactions) = 0) then
+    Result := Species[0]
+  else
+    Result := nil;
+end;
+
+function TSelectionInfo.SingleReaction: TReaction;
+begin
+  if (Length(Reactions) = 1) and (Length(Species) = 0) then
+    Result := Reactions[0]
+  else
+    Result := nil;
+end;
+
+function TSelectionInfo.IsMixed: Boolean;
+begin Result := (Length(Species) > 0) and (Length(Reactions) > 0); end;
+
+function TSelectionInfo.IsHomogeneous: Boolean;
+begin Result := not IsMixed; end;
+
 
 // ===========================================================================
 //  Construction / destruction
@@ -753,6 +808,17 @@ begin
   Primary.Selected := True;
   FScrollOffset.X := -Primary.Center.X * FZoom;
   FScrollOffset.Y := -Primary.Center.Y * FZoom;
+end;
+
+
+// ===========================================================================
+//  Alias actions
+// ===========================================================================
+
+
+procedure TDiagramView.PushUndoCmd(ACmd: TDiagramCommand);
+begin
+  FUndoManager.Push(ACmd);
 end;
 
 // ===========================================================================
@@ -2014,33 +2080,12 @@ end;
 
 procedure TDiagramView.NotifySelectionChanged;
 var
-  SelS : TArray<TSpeciesNode>;
-  SelR : TArray<TReaction>;
-  S    : TSpeciesNode;
-  R    : TReaction;
+  Info: TSelectionInfo;
 begin
   if not Assigned(FOnSelectionChanged) then Exit;
-
-  SelS := FModel.SelectedSpecies;
-  SelR := FModel.SelectedReactions;
-
-  if (Length(SelS) = 1) and (Length(SelR) = 0) then
-  begin
-    S := SelS[0];
-    R := nil;
-  end
-  else if (Length(SelR) = 1) and (Length(SelS) = 0) then
-  begin
-    S := nil;
-    R := SelR[0];
-  end
-  else
-  begin
-    S := nil;
-    R := nil;
-  end;
-
-  FOnSelectionChanged(Self, S, R);
+  Info.Species   := FModel.SelectedSpecies;
+  Info.Reactions := FModel.SelectedReactions;
+  FOnSelectionChanged(Self, Info);
 end;
 
 
@@ -2382,12 +2427,11 @@ begin
   for R in FModel.Reactions do
   begin
     // Custom style takes priority; selection always overrides line color.
-    if R.Style.HasCustomStyle then
-      begin
-      if R.Style.LineColor  <> 0 then LineColor := R.Style.LineColor;
-      end
-    else
-      LineColor := CLR_REACTION;
+    // Always start from the palette default so a custom style with LineColor=0
+    // falls back cleanly rather than leaving the local var uninitialised.
+    LineColor := CLR_REACTION;
+    if R.Style.HasCustomStyle and (R.Style.LineColor <> 0) then
+      LineColor := R.Style.LineColor;
 
     var EffLineWidth := VIEW_LINE_WIDTH;
     if R.Style.HasCustomStyle and (R.Style.LineWidth > 0) then

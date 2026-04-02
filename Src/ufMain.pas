@@ -40,6 +40,7 @@ uses
   System.UITypes,
   System.Classes, System.Variants,
   System.ImageList,
+  Generics.Collections,
   Skia,
   FMX.Skia,
   FMX.Types,
@@ -64,8 +65,12 @@ uses
   FMX.Ani,
   FMX.Edit,
   FMX.EditBox,
-  FMX.NumberBox, FMX.Memo.Types, FMX.ScrollBox, FMX.Memo,
-  uColorPicker;
+  FMX.NumberBox,
+  FMX.Memo.Types,
+  FMX.ScrollBox,
+  FMX.Memo,
+  uColorPicker,
+  uUndoManager;
 
 
 type
@@ -180,6 +185,7 @@ type
     chkShowJunctionPoint: TCheckBox;
     nbLineWidth: TNumberBox;
     Label7: TLabel;
+    StyleBook1: TStyleBook;
     procedure btnAddBiUniClick(Sender: TObject);
     procedure btnAddSpeciesClick(Sender: TObject);
     procedure btnAddUniBiClick(Sender: TObject);
@@ -272,6 +278,12 @@ type
     FSelectedSpecies  : TSpeciesNode;
     FSelectedReaction : TReaction;
 
+    // Style-edit undo: snapshots captured when colour picker opens
+    FStyleSpeciesBefore  : TDictionary<string, TVisualStyle>;
+    FStyleReactionBefore : TDictionary<string, TVisualStyle>;
+
+    FUpdatingControls : Boolean;   // True while programmatically updating UI controls
+
     // Recompute scrollbar Min/Max/ViewportSize from the model's content bounds.
     // Call whenever the diagram changes (add/remove/move).
     procedure UpdateScrollBars;
@@ -295,8 +307,14 @@ type
     procedure SaveToPDF (const AFileName : String; APageSize: TPDFPageSize = psLetterPortrait);
     procedure PrintDiagram;
 
+    procedure CaptureStyleSnapshot;
+
+    procedure UpdateSelectionButtons(const AInfo: TSelectionInfo);
+    procedure UpdateJunctionCheckbox(const AInfo: TSelectionInfo);
+    procedure UpdateInspectorPanel(const AInfo: TSelectionInfo);
+
     procedure DiagramNeedRepaint(Sender: TObject);
-    procedure DiagramSelectionChanged(Sender: TObject; ASpecies: TSpeciesNode; AReaction : TReaction);
+    procedure DiagramSelectionChanged(Sender: TObject; const AInfo : TSelectionInfo);
 
     procedure HandleColorChanged(Sender: TObject);
   public
@@ -315,6 +333,9 @@ Uses FMX.Printer, Math;
 
 procedure TfrmMain.FormDestroy(Sender: TObject);
 begin
+  FreeAndNil(FStyleSpeciesBefore);
+  FreeAndNil(FStyleReactionBefore);
+
   FView.Free;
   FModel.Free;
 end;
@@ -324,63 +345,124 @@ begin
   PaintBox.Redraw;
 end;
 
-procedure TfrmMain.DiagramSelectionChanged(Sender: TObject; ASpecies: TSpeciesNode; AReaction : TReaction);
-var Fill, Border: TAlphaColor;
-    BorderWidth : Single;
+
+// ===========================================================================
+//  Undo Support
+// ===========================================================================
+
+procedure TfrmMain.CaptureStyleSnapshot;
+var
+  S : TSpeciesNode;
+  R : TReaction;
 begin
-  FSelectedSpecies  := ASpecies;
-  FSelectedReaction := AReaction;
+  FreeAndNil(FStyleSpeciesBefore);
+  FreeAndNil(FStyleReactionBefore);
+  FStyleSpeciesBefore  := TDictionary<string, TVisualStyle>.Create;
+  FStyleReactionBefore := TDictionary<string, TVisualStyle>.Create;
+  for S in FView.Model.SelectedSpecies do
+    FStyleSpeciesBefore.Add(S.Id, S.Style);
+  for R in FView.Model.SelectedReactions do
+    FStyleReactionBefore.Add(R.Id, R.Style);
+end;
 
-  if Assigned(ASpecies) then
+
+procedure TfrmMain.UpdateSelectionButtons(const AInfo: TSelectionInfo);
+begin
+  // Enable each button whenever there is at least one item of that type
+  // selected — mixed selections are fine, HandleColorChanged applies the
+  // color only to the matching type.
+  btnSpeciesFillColor.Enabled   := AInfo.SpeciesCount  > 0;
+  btnSpeciesBorderColor.Enabled := AInfo.SpeciesCount  > 0;
+  btnReactionColor.Enabled      := AInfo.ReactionCount > 0;
+
+  // Single-item controls
+  edtNumConcentration.Enabled  := Assigned(FSelectedSpecies);
+  chkIsBoundarySpecies.Enabled := Assigned(FSelectedSpecies);
+  nbBorderWidth.Enabled        := Assigned(FSelectedSpecies);
+  chkShowJunctionPoint.Enabled := AInfo.ReactionCount > 0;
+  nbLineWidth.Enabled          := Assigned(FSelectedReaction);
+end;
+
+
+procedure TfrmMain.UpdateJunctionCheckbox(const AInfo: TSelectionInfo);
+var
+  R: TReaction;
+begin
+  // Orthogonal to species/mixed — fires whenever any reactions are selected.
+  if AInfo.ReactionCount = 0 then Exit;
+  chkShowJunctionPoint.IsChecked := True;
+  for R in AInfo.Reactions do
+    if not R.Style.JunctionVisible then
+    begin
+      chkShowJunctionPoint.IsChecked := False;
+      Break;
+    end;
+end;
+
+
+procedure TfrmMain.UpdateInspectorPanel(const AInfo: TSelectionInfo);
+var
+  Fill, Border : TAlphaColor;
+  BorderWidth  : Single;
+  LineColor    : TAlphaColor;
+  LineWidth    : Single;
+begin
+  if Assigned(FSelectedSpecies) then
   begin
-    // Exactly one species selected — populate controls from its state
-    edtNumConcentration.Value    := ASpecies.InitialValue;
-    edtNumConcentration.Enabled := True;
-
-    FView.EffectiveSpeciesColors(ASpecies, Fill, Border, BorderWidth);
-
-    // Resolve the fill colour to whichever dropdown index matches;
-    // or store TAlphaColor directly in the ComboBox's Objects[] array.
-    btnSpeciesFillColor.Enabled := True;
-    btnSpeciesFillColor.Color := Fill;
-
-    btnSpeciesBorderColor.Enabled := True;
+    edtNumConcentration.Value      := FSelectedSpecies.InitialValue;
+    chkIsBoundarySpecies.IsChecked := FSelectedSpecies.IsBoundary;
+    FView.EffectiveSpeciesColors(FSelectedSpecies, Fill, Border, BorderWidth);
+    btnSpeciesFillColor.Color   := Fill;
     btnSpeciesBorderColor.Color := Border;
-
-    chkIsBoundarySpecies.IsChecked := ASpecies.IsBoundary;
-    chkIsBoundarySpecies.Enabled   := True;
-
-    nbBorderWidth.Enabled := True;
-    nbBorderWidth.Value := BorderWidth;
+    nbBorderWidth.Value         := BorderWidth;
   end
-  else if Assigned(AReaction) then
+  else if Assigned(FSelectedReaction) then
   begin
-    // populate reaction property panel
-
-    FView.EffectiveReactionColors(AReaction, Fill, BorderWidth);
-    btnReactionColor.Enabled := True;
-    btnReactionColor.Color := Fill;
-    chkShowJunctionPoint.Enabled := True;
-    chkShowJunctionPoint.IsChecked := AReaction.Style.JunctionVisible;
-    nbLineWidth.Enabled := True;
-    if AReaction.Style.HasCustomStyle then
-       nbLineWidth.Value := AReaction.Style.LineWidth
-    else nbLineWidth.Value := 1.5;
+    FView.EffectiveReactionColors(FSelectedReaction, LineColor, LineWidth);
+    btnReactionColor.Color := LineColor;
+    nbLineWidth.Value      := LineWidth;
+  end
+  else if AInfo.SpeciesCount > 1 then
+  begin
+    // Show first item's color as swatch hint
+    FView.EffectiveSpeciesColors(AInfo.Species[0], Fill, Border, BorderWidth);
+    btnSpeciesFillColor.Color   := Fill;
+    btnSpeciesBorderColor.Color := Border;
+  end
+  else if AInfo.ReactionCount > 1 then
+  begin
+    FView.EffectiveReactionColors(AInfo.Reactions[0], LineColor, LineWidth);
+    btnReactionColor.Color := LineColor;
   end
   else
   begin
-    // nothing or mixed selection — clear/disable all panels
-    edtNumConcentration.Value := 0.0;
-    edtNumConcentration.Enabled := False;
-    btnSpeciesFillColor.Enabled     := False;
-    btnSpeciesBorderColor.Enabled   := False;
-    chkIsBoundarySpecies.Enabled    := False;
-    nbBorderWidth.Enabled := False;
+    // Nothing selected or mixed — clear numerics
+    edtNumConcentration.Value := 0;
+    nbBorderWidth.Value       := 0;
+    nbLineWidth.Value         := 0;
+  end;
+end;
 
-    btnReactionColor.Enabled := False;
-    nbLineWidth.Enabled := False;
-    chkShowJunctionPoint.Enabled := False;
-    // etc.
+
+procedure TfrmMain.DiagramSelectionChanged(Sender: TObject; const AInfo: TSelectionInfo);
+var
+  Fill, Border : TAlphaColor;
+  BorderWidth  : Single;
+  LineColor    : TAlphaColor;
+  LineWidth    : Single;
+  S            : TSpeciesNode;
+  R            : TReaction;
+begin
+  FSelectedSpecies  := AInfo.SingleSpecies;
+  FSelectedReaction := AInfo.SingleReaction;
+
+  FUpdatingControls := True;
+  try
+    UpdateSelectionButtons (AInfo);
+    UpdateJunctionCheckbox(AInfo);
+    UpdateInspectorPanel(AInfo);
+  finally
+    FUpdatingControls := False;
   end;
 
 end;
@@ -409,37 +491,72 @@ begin
   FColorPicker.OnColorChanged := HandleColorChanged;
 end;
 
-
 procedure TfrmMain.HandleColorChanged(Sender: TObject);
 var
-  Sel : TArray<TSpeciesNode>;
+  S    : TSpeciesNode;
+  R    : TReaction;
+  St   : TVisualStyle;
+  // After-style snapshots for undo
+  SpeciesAfter  : TDictionary<string, TVisualStyle>;
+  ReactionAfter : TDictionary<string, TVisualStyle>;
 begin
   TColorButton(FActiveSwatch).Color := FColorPicker.Color;
 
-  if Assigned(FSelectedSpecies) then
+  // --- Apply colour to all selected items of the relevant type --------------
+  if btnSpeciesFillColor.Enabled and (FActiveSwatch = btnSpeciesFillColor) then
   begin
-    if FActiveSwatch = btnSpeciesFillColor then
-      FSelectedSpecies.Style.FillColor   := FColorPicker.Color
-    else
-      FSelectedSpecies.Style.BorderColor := FColorPicker.Color;
-    FSelectedSpecies.Style.HasCustomStyle := True;
+    for S in FView.Model.SelectedSpecies do
+    begin
+      S.Style.FillColor     := FColorPicker.Color;
+      S.Style.HasCustomStyle := True;
+    end;
   end
-  else if Assigned(FSelectedReaction) then
+  else if btnSpeciesBorderColor.Enabled and (FActiveSwatch = btnSpeciesBorderColor) then
   begin
-    var S := FSelectedReaction.Style;   // copy the record out
-    if FActiveSwatch = btnReactionColor then
-      S.LineColor     := FColorPicker.Color
-    else
-      S.JunctionColor := FColorPicker.Color;
-    S.HasCustomStyle := True;
-    FSelectedReaction.Style := S;       // write the modified record back
+    for S in FView.Model.SelectedSpecies do
+    begin
+      S.Style.BorderColor    := FColorPicker.Color;
+      S.Style.HasCustomStyle := True;
+    end;
+  end
+  else if btnReactionColor.Enabled and (FActiveSwatch = btnReactionColor) then
+  begin
+    for R in FView.Model.SelectedReactions do
+    begin
+      St := R.Style;
+      St.LineColor      := FColorPicker.Color;
+      St.HasCustomStyle := True;
+      R.Style := St;
+    end;
   end
   else
     Exit;
 
+  // --- Push undo command once per picker session ----------------------------
+  // FStyleSpeciesBefore/FStyleReactionBefore are set in CaptureStyleSnapshot
+  // (called when the picker opens) and nilled here after pushing so that
+  // continuous drag events don't push multiple undo entries.
+  if Assigned(FStyleSpeciesBefore) or Assigned(FStyleReactionBefore) then
+  begin
+    SpeciesAfter  := TDictionary<string, TVisualStyle>.Create;
+    ReactionAfter := TDictionary<string, TVisualStyle>.Create;
+    for S in FView.Model.SelectedSpecies do
+      SpeciesAfter.Add(S.Id, S.Style);
+    for R in FView.Model.SelectedReactions do
+      ReactionAfter.Add(R.Id, R.Style);
+
+    FView.PushUndoCmd(TStyleEditCmd.Create(
+      FView.Model,
+      FStyleSpeciesBefore,  SpeciesAfter,
+      FStyleReactionBefore, ReactionAfter));
+
+    // Transfer ownership to the command — nil our refs so we don't push again
+    FStyleSpeciesBefore  := nil;
+    FStyleReactionBefore := nil;
+  end;
+
   PaintBox.Redraw;
 end;
-
 
 procedure TfrmMain.ApplyScrollToView;
 begin
@@ -475,6 +592,7 @@ end;
 
 procedure TfrmMain.btnSpeciesFillColorClick(Sender: TObject);
 begin
+  CaptureStyleSnapshot;
   FActiveSwatch := btnSpeciesFillColor;
   FColorPicker.Color := btnSpeciesFillColor.Color;
   FColorPicker.ShowAt(btnSpeciesFillColor);
@@ -588,6 +706,7 @@ end;
 
 procedure TfrmMain.btnReactionColorClick(Sender: TObject);
 begin
+  CaptureStyleSnapshot;
   FActiveSwatch := btnReactionColor;
   FColorPicker.Color := btnReactionColor.Color;
   FColorPicker.ShowAt(btnReactionColor);
@@ -631,6 +750,7 @@ end;
 
 procedure TfrmMain.btnSpeciesBorderColorClick(Sender: TObject);
 begin
+  CaptureStyleSnapshot;
   FActiveSwatch := btnSpeciesBorderColor;
   FColorPicker.Color := btnSpeciesBorderColor.Color;
   FColorPicker.ShowAt(btnSpeciesBorderColor);
@@ -681,11 +801,17 @@ end;
 
 procedure TfrmMain.chkShowJunctionPointChange(Sender: TObject);
 var R : TReaction;
+    St : TVisualStyle;
 begin
+  if FUpdatingControls then Exit;
   for R in FModel.SelectedReactions do
-      begin
-      R.Style.JunctionVisible := chkShowJunctionPoint.IsChecked;
-      end;
+  begin
+    St := R.Style;
+    St.JunctionVisible := chkShowJunctionPoint.IsChecked;
+    // Do NOT set HasCustomStyle here — JunctionVisible is a display toggle
+    // that is meaningful even on palette-default reactions.
+    R.Style := St;
+  end;
   PaintBox.Redraw;
 end;
 
@@ -760,6 +886,7 @@ end;
 procedure TfrmMain.edtNumConcentrationExit(Sender: TObject);
 var S : TSpeciesNode;
 begin
+  if FUpdatingControls then Exit;
   for S in FModel.SelectedSpecies do
       S.InitialValue := edtNumConcentration.Value;
 end;
@@ -887,7 +1014,7 @@ begin
   HoverTimer.Enabled := False;
   HoverTimer.Enabled := True;
 
-  lblStatus.Text := 'Coords X: ' + floattostr (X) + ', Y: ' + floattostr (Y);
+  lblStatus.Text := 'Coords X: ' + Format('%.2f', [X]) + ', Y: ' + Format('%.2f', [Y]);
   PaintBox.Redraw;
 end;
 
@@ -1140,7 +1267,7 @@ begin
     SL := TStringList.Create;
     try
       SL.Text := FView.ExportSBML;
-      SL.SaveToFile(Dlg.FileName, TEncoding.UTF8);
+      SL.SaveToFile(Dlg.FileName);
     finally
       SL.Free;
     end;
@@ -1480,6 +1607,7 @@ end;
 procedure TfrmMain.nbBorderWidthExit(Sender: TObject);
 var S : TSpeciesNode;
 begin
+  if FUpdatingControls then Exit;
   for S in FModel.SelectedSpecies do
       begin
       S.Style.HasCustomStyle := True;
@@ -1491,6 +1619,8 @@ end;
 procedure TfrmMain.nbLineWidthExit(Sender: TObject);
 var R : TReaction;
 begin
+  if FUpdatingControls then Exit;
+
   for R in FModel.SelectedReactions do
       begin
       R.Style.HasCustomStyle := True;
