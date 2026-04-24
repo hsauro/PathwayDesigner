@@ -269,6 +269,16 @@ end;
     SavePos := FLexer.Position;
 
     try
+      // ---------------------------------------------------------------
+      //  Source reaction: arrow is already the current token.
+      //  e.g.  -> A; k   or   => A; k
+      // ---------------------------------------------------------------
+      if Match(ttArrow) or Match(ttIrreversibleArrow) then
+      begin
+        Result := True;
+        Exit;
+      end;
+
       // Handle stoichiometry at the start
       if Match(ttNumber) then
       begin
@@ -372,6 +382,12 @@ begin
     ttCompartment: ParseCompartmentDeclaration(AModel);
     ttSpecies: ParseSpeciesDeclaration(AModel, False);
     ttVar: ParseSpeciesDeclaration(AModel, False);
+
+    // Source reactions: empty reactant side, arrow is the very first token.
+    // e.g.  -> A; v      or      => A; v
+    ttArrow, ttIrreversibleArrow:
+      ParseReaction(AModel);
+
     ttIdentifier:
       begin
         // Use lookahead to determine if this is a reaction, assignment, or assignment rule

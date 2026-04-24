@@ -132,6 +132,7 @@ type
     FIsConstant   : Boolean;
     FCompartment  : string;
     FLocked : Boolean;
+    FIsNullNode   : Boolean;   // True = synthetic sink/source node (no biochemical identity)
   public
     // Visual style
     Style        : TVisualStyle;
@@ -150,6 +151,7 @@ type
     property IsConstant   : Boolean      read FIsConstant   write FIsConstant;
     property Compartment  : string       read FCompartment  write FCompartment;
     property Locked       : Boolean      read FLocked       write FLocked;
+    property IsNullNode   : Boolean      read FIsNullNode   write FIsNullNode;
 
     function IsAlias     : Boolean; inline;
     function HalfW       : Single;  inline;
@@ -175,6 +177,7 @@ type
     FIsLinear        : Boolean;
     FIsBezier        : Boolean;   // True = render legs as cubic Bezier curves
     FIsJunctionSmooth: Boolean;   // True = collinear inner handles (C1 at junction)
+    FModifiers       : TObjectList<TParticipant>;  // species that modulate this reaction
   public
     // Visual style
     Style           : TVisualStyle;
@@ -192,6 +195,7 @@ type
     property IsLinear        : Boolean read FIsLinear        write FIsLinear;
     property IsBezier        : Boolean read FIsBezier        write FIsBezier;
     property IsJunctionSmooth: Boolean read FIsJunctionSmooth write FIsJunctionSmooth;
+    property Modifiers : TObjectList<TParticipant> read FModifiers;
 
     function ReactantSpecies(AIndex: Integer): TSpeciesNode;
     function ProductSpecies (AIndex: Integer): TSpeciesNode;
@@ -619,6 +623,8 @@ begin
     Result.AddPair('compartment', FCompartment);
   if Assigned(FAliasOf) then
     Result.AddPair('aliasOf', FAliasOf.Id);
+  if FIsNullNode then
+     Result.AddPair('isNullNode', TJSONBool.Create(True));
   if Style.HasCustomStyle then
     Result.AddPair('style', Style.ToJSON);
 end;
@@ -652,6 +658,7 @@ begin
   Result.FInitialValue := GetFloat(AObj, 'initialValue');
   Result.FIsBoundary   := GetBool (AObj, 'isBoundary');
   Result.FIsConstant   := GetBool (AObj, 'isConstant');
+  Result.FIsNullNode   := GetBool (AObj, 'isNullNode', False);
   CompartVal := AObj.GetValue('compartment');
   if Assigned(CompartVal) then Result.FCompartment := CompartVal.Value;
   StyleVal := AObj.GetValue('style');
@@ -677,12 +684,15 @@ begin
   FIsBezier      := False;
   FIsJunctionSmooth := False;
   Style        := TVisualStyle.Default;
+
+  FModifiers        := TObjectList<TParticipant>.Create(True);
 end;
 
 destructor TReaction.Destroy;
 begin
   FReactants.Free;
   FProducts.Free;
+  FModifiers.Free;
   inherited;
 end;
 
@@ -747,6 +757,16 @@ begin
     Arr.AddElement(PObj);
   end;
   Result.AddPair('products', Arr);
+
+  // Modifiers — stored as a simple array of species ids (no stoichiometry or ctrl pts needed)
+  Arr := TJSONArray.Create;
+  for P in FModifiers do
+  begin
+    PObj := TJSONObject.Create;
+    PObj.AddPair('id', P.Species.Id);
+    Arr.AddElement(PObj);
+  end;
+  Result.AddPair('modifiers', Arr);
 
   if Style.HasCustomStyle then
     Result.AddPair('style', Style.ToJSON);
@@ -1325,6 +1345,16 @@ begin
       end;
     end;
 
+    // Modifiers (v4+; absent in older files = no modifiers, which is correct)
+    var ModArr := RctObj.GetValue('modifiers') as TJSONArray;
+    if Assigned(ModArr) then
+      for j := 0 to ModArr.Count - 1 do
+      begin
+        PObj := ModArr.Items[j] as TJSONObject;
+        var ModSpecies := FindSpeciesById(PObj.GetValue('id').Value);
+        if Assigned(ModSpecies) then
+          R.Modifiers.Add(TParticipant.Create(ModSpecies, 1.0));
+      end;
     FReactions.Add(R);
   end;
 

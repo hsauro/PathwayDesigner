@@ -972,6 +972,15 @@ begin
         mnuSep2.Visible        := False;
         mnuDeleteNode.Visible  := True;
         mnuDeleteNode.Text     := 'Delete Species';
+
+        // Null (sink/source) nodes cannot be renamed or aliased.
+        if HitSpecies.IsNullNode then
+        begin
+          mnuCreateAlias.Visible := False;
+          mnuRename.Visible      := False;
+          mnuSep1.Visible        := False;
+          mnuDeleteNode.Text     := 'Remove Null Node';
+        end;
       end;
 
       rctAlias:

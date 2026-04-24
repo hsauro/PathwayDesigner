@@ -39,7 +39,10 @@ uses
 // ---------------------------------------------------------------------------
 const
   VIEW_NODE_CORNER     = 8.0;
-  VIEW_JUNCTION_RADIUS = 5.0;
+  VIEW_JUNCTION_RADIUS = 4.0;
+  VIEW_MODIFIER_DOT_R    = 4.0;   // world px radius of the modifier terminus dot
+  VIEW_MODIFIER_OFFSET   = 10.0;  // world px: dot sits this far from junction centre
+
   VIEW_PRODUCT_GAP         = 6.0;  // world px gap, straight/linear product legs
   VIEW_BEZIER_PRODUCT_GAP  = 6.0;  // world px gap, Bézier product legs
   VIEW_REACTANT_GAP        = 6.0;  // world px gap, straight/linear reactant legs
@@ -220,6 +223,7 @@ type
     // -----------------------------------------------------------------------
     procedure RenderBackground     (const ACanvas: ISkCanvas; W, H: Single);
     procedure RenderReactions      (const ACanvas: ISkCanvas);
+    procedure RenderModifierArcs    (const ACanvas: ISkCanvas);
     procedure RenderSpeciesNodes   (const ACanvas: ISkCanvas);
     procedure RenderSelectionHalos (const ACanvas: ISkCanvas);
     procedure RenderJunctionHandles(const ACanvas: ISkCanvas);
@@ -430,6 +434,10 @@ const
   CLR_GUIDE_LINE    : TAlphaColor = $FF888888;
   CLR_RUBBER_FILL   : TAlphaColor = $330066CC;
   CLR_RUBBER_BORDER : TAlphaColor = $FF0066CC;
+  CLR_MODIFIER      : TAlphaColor = $FF007777;   // teal — modifier arc line and dot
+
+  CLR_NULL_FILL   : TAlphaColor = $FFB0B0B0;   // medium grey circle fill
+  CLR_NULL_BORDER : TAlphaColor = $FF505050;   // dark grey circle border / cross
 
   // Bézier control point handles
   CLR_CTRL_FILL         : TAlphaColor = $FFFFFFFF;   // white fill
@@ -2596,6 +2604,86 @@ begin
   end;
 end;
 
+
+procedure TDiagramView.RenderModifierArcs(const ACanvas: ISkCanvas);
+// Draws a dashed arc from each modifier species to its reaction junction,
+// terminating in a small filled circle just outside the junction.
+// Rendered after reactions and before species nodes so the arc origin is
+// naturally hidden underneath the species rectangle.
+var
+  R        : TReaction;
+  P        : TParticipant;
+  JPos     : TPointF;
+  BoundW   : TPointF;
+  StartW   : TPointF;
+  DotCentW : TPointF;
+  LineEndW : TPointF;
+  DirX, DirY, DirLen : Single;
+  LinePaint  : ISkPaint;
+  DotPaint   : ISkPaint;
+  Intervals  : TArray<Single>;
+  LineColor  : TAlphaColor;
+begin
+  Intervals := [6, 4];
+
+  for R in FModel.Reactions do
+  begin
+    if R.Modifiers.Count = 0 then Continue;
+
+    JPos      := EffectiveJunctionPos(R);
+    LineColor := CLR_MODIFIER;
+    // Highlight modifier arcs when the reaction is selected.
+    if R.Selected then LineColor := CLR_REACTION_SEL;
+
+    LinePaint             := TSkPaint.Create;
+    LinePaint.AntiAlias   := True;
+    LinePaint.Color       := LineColor;
+    LinePaint.Style       := TSkPaintStyle.Stroke;
+    LinePaint.StrokeWidth := W2SLen(VIEW_LINE_WIDTH);
+    LinePaint.PathEffect  := TSkPathEffect.MakeDash(Intervals, 0);
+
+    DotPaint           := TSkPaint.Create;
+    DotPaint.AntiAlias := True;
+    DotPaint.Color     := LineColor;
+    DotPaint.Style     := TSkPaintStyle.Fill;
+
+    for P in R.Modifiers do
+    begin
+      // Direction from junction toward modifier species.
+      DirX   := P.Species.Center.X - JPos.X;
+      DirY   := P.Species.Center.Y - JPos.Y;
+      DirLen := Sqrt(DirX * DirX + DirY * DirY);
+      if DirLen < 1.0 then Continue;   // coincident — skip
+      DirX := DirX / DirLen;
+      DirY := DirY / DirLen;
+
+      // Terminus dot centre: VIEW_MODIFIER_OFFSET world px from junction,
+      // in the direction of the modifier species.
+      DotCentW.X := JPos.X + DirX * VIEW_MODIFIER_OFFSET;
+      DotCentW.Y := JPos.Y + DirY * VIEW_MODIFIER_OFFSET;
+
+      // Line ends at the near edge of the dot.
+      LineEndW.X := DotCentW.X - DirX * VIEW_MODIFIER_DOT_R;
+      LineEndW.Y := DotCentW.Y - DirY * VIEW_MODIFIER_DOT_R;
+
+      // Line starts at the boundary of the modifier species node.
+      BoundW := RectBoundaryIntersect(P.Species.Center, P.Species.HalfW,
+                                       P.Species.HalfH, JPos);
+      // Back off slightly from the border.
+      StartW.X := BoundW.X + DirX * (-VIEW_REACTANT_GAP); // toward junction
+      StartW.Y := BoundW.Y + DirY * (-VIEW_REACTANT_GAP);
+      // (negative because DirX points junction→species; we want species→junction)
+      // Re-express: direction FROM species toward junction is (-DirX, -DirY).
+      StartW.X := BoundW.X + (-DirX) * VIEW_REACTANT_GAP;
+      StartW.Y := BoundW.Y + (-DirY) * VIEW_REACTANT_GAP;
+
+      ACanvas.DrawLine(W2S(StartW), W2S(LineEndW), LinePaint);
+      ACanvas.DrawCircle(W2S(DotCentW), W2SLen(VIEW_MODIFIER_DOT_R), DotPaint);
+    end;
+  end;
+end;
+
+
 procedure TDiagramView.RenderSpeciesNodes(const ACanvas: ISkCanvas);
 var
   S           : TSpeciesNode;
@@ -2606,12 +2694,54 @@ var
   FillPaint   : ISkPaint;
   BorderPaint : ISkPaint;
   Intervals   : TArray<Single>;
+  FillPt, Bordpt, Crosspt : ISkPaint;
 begin
   CornerR   := W2SLen(VIEW_NODE_CORNER);
   Intervals := [5, 4];
 
   for S in FModel.Species do
   begin
+    // -----------------------------------------------------------------------
+    //  Null (sink / source) nodes — small grey circle with an × cross.
+    //  These nodes carry no label and use a fixed grey palette regardless of
+    //  any custom style set on the node.
+    // -----------------------------------------------------------------------
+
+    if S.IsNullNode then
+    begin
+      var CScr   := W2S(S.Center);
+      var Radius := W2SLen(S.HalfW);          // circle inscribed in Width
+
+      // Filled circle
+      FillPt := TSkPaint.Create;
+      FillPt.AntiAlias := True;
+      FillPt.Color     := CLR_NULL_FILL;
+      FillPt.Style     := TSkPaintStyle.Fill;
+      ACanvas.DrawCircle(CScr, Radius, FillPt);
+
+      // Circle border
+      BordPt := TSkPaint.Create;
+      BordPt.AntiAlias   := True;
+      BordPt.Color       := CLR_NULL_BORDER;
+      BordPt.Style       := TSkPaintStyle.Stroke;
+      BordPt.StrokeWidth := W2SLen(VIEW_BORDER_WIDTH);
+      ACanvas.DrawCircle(CScr, Radius, BordPt);
+
+      // × cross (arms reach to 55 % of radius)
+      var Arm    := Radius * 0.55;
+      CrossPt := TSkPaint.Create;
+      CrossPt.AntiAlias   := True;
+      CrossPt.Color       := CLR_NULL_BORDER;
+      CrossPt.Style       := TSkPaintStyle.Stroke;
+      CrossPt.StrokeWidth := W2SLen(1.8);
+      CrossPt.StrokeCap   := TSkStrokeCap.Round;
+      ACanvas.DrawLine(TPointF.Create(CScr.X - Arm, CScr.Y - Arm),
+                       TPointF.Create(CScr.X + Arm, CScr.Y + Arm), CrossPt);
+      ACanvas.DrawLine(TPointF.Create(CScr.X + Arm, CScr.Y - Arm),
+                       TPointF.Create(CScr.X - Arm, CScr.Y + Arm), CrossPt);
+      Continue;   // skip the rounded-rect + label code below
+    end;
+
     // --- Determine colors (custom style takes priority over palette) ---
     // Selection is indicated purely by the halo — no color overrides here.
     if S.Style.HasCustomStyle then
@@ -2696,6 +2826,15 @@ begin
   for S in FModel.Species do
   begin
     if not S.Selected then Continue;
+    // Null nodes get a circular halo; regular nodes get a rounded-rect halo.
+    if S.IsNullNode then
+    begin
+      var CScr      := W2S(S.Center);
+      var HaloR     := W2SLen(S.HalfW + VIEW_SEL_RING_OUTSET);
+      ACanvas.DrawCircle(CScr, HaloR, RingPaint);
+      Continue;
+    end;
+
     SR := TRectF.Create(
       W2S(TPointF.Create(S.Center.X - S.HalfW - Outset,
                          S.Center.Y - S.HalfH - Outset)),
@@ -3143,6 +3282,7 @@ procedure TDiagramView.Render(const ACanvas: ISkCanvas;
 begin
   RenderBackground     (ACanvas, ACanvasW, ACanvasH);
   RenderReactions      (ACanvas);
+  RenderModifierArcs   (ACanvas);
   RenderSpeciesNodes   (ACanvas);
   RenderSelectionHalos (ACanvas);
   RenderJunctionHandles(ACanvas);

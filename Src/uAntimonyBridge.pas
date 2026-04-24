@@ -55,11 +55,17 @@ uses
   System.Math,
   uBioModel,
   uAntimony,
-  uAntimonyModelType;
+  uAntimonyModelType,
+  uExpressionNode;
 
 type
   TAntimonyBridge = class
   public
+    // When True (default), a reaction like A -> A + B; k*A is automatically
+    // rewritten as  -> B; k*A  with A recorded as a modifier.
+    // Set to False to preserve the original stoichiometry without conversion.
+    class var ConvertCatalyticSpecies: Boolean;
+
     // Import Antimony source text -> populate AModel (clears existing content).
     // Raises EAntimonyParseError on parse failure.
     class procedure ImportFromString(const ASource: string;
@@ -90,6 +96,8 @@ const
   MID_X         = 290;   // X of junction point
   TOP_MARGIN    = 80;    // Y of first row centre
   SPECIES_PITCH = 60;    // vertical gap between species in the same column
+  NULL_NODE_W   = 28;   // world-pixel dimensions of a null (sink/source) node
+  NULL_NODE_H   = 28;
 
 // ===========================================================================
 //  Import helpers
@@ -280,22 +288,141 @@ begin
         JX := (SumRX + SumPX) * 0.5;
         JY := (SumRY + SumPY) * 0.5;
 
-        Reaction := AModel.AddReaction(JX, JY);
+Reaction := AModel.AddReaction(JX, JY);
         Reaction.KineticLaw   := AntRct.KineticLaw;
         Reaction.IsReversible := AntRct.IsReversible;
         if AntRct.Id <> '' then Reaction.Id := AntRct.Id;
 
+        // --- Wire all reactants ---
         for j := 0 to NReact - 1 do
         begin
           PartNode := Placed[CanonicalId(AntModel, AntRct.Reactants[j].SpeciesName)];
           Reaction.Reactants.Add(
             TParticipant.Create(PartNode, AntRct.Reactants[j].Stoichiometry));
         end;
+
+        // --- Wire all products ---
         for j := 0 to NProd - 1 do
         begin
           PartNode := Placed[CanonicalId(AntModel, AntRct.Products[j].SpeciesName)];
           Reaction.Products.Add(
             TParticipant.Create(PartNode, AntRct.Products[j].Stoichiometry));
+        end;
+
+        // --- Option C: catalytic species conversion ---
+        // A species with net stoichiometry zero (same stoich on both sides) is a
+        // catalyst.  When ConvertCatalyticSpecies is True we remove it from both
+        // participant lists; it will be picked up as a modifier in the next step.
+        if ConvertCatalyticSpecies then
+        begin
+          var CatIdx := 0;
+          while CatIdx < Reaction.Reactants.Count do
+          begin
+            var ReactPart := Reaction.Reactants[CatIdx];
+            // Look for the same species in products with equal stoichiometry.
+            var ProdIdx := 0;
+            var Found   := False;
+            while ProdIdx < Reaction.Products.Count do
+            begin
+              var ProdPart := Reaction.Products[ProdIdx];
+              if (ProdPart.Species = ReactPart.Species) and
+                 (Abs(ProdPart.Stoichiometry - ReactPart.Stoichiometry) < 1e-9) then
+              begin
+                // Net stoich = 0 — this is a catalyst.
+                // Extract (not delete-and-free) both participants so the node
+                // pointer remains valid for the modifier wiring below.
+                Reaction.Products.Extract(ProdPart);
+                ProdPart.Free;
+                Found := True;
+                Break;
+              end;
+              Inc(ProdIdx);
+            end;
+            if Found then
+            begin
+              var Extracted := Reaction.Reactants.Extract(ReactPart);
+              Extracted.Free;
+              // Do NOT increment CatIdx — the next item slid into this slot.
+            end
+            else
+              Inc(CatIdx);
+          end;
+        end;
+
+        // --- Modifier detection from the kinetic law AST ---
+        // Any species identifier in the rate law that is not already a
+        // reactant or product of this reaction is a modifier.
+        if AntRct.KineticAST <> nil then
+        begin
+          // Build a quick-lookup set of current participant ids.
+          var InReaction := TDictionary<string, Boolean>.Create;
+          try
+            var PP : TParticipant;
+            for PP in Reaction.Reactants do
+              InReaction.AddOrSetValue(PP.Species.Id, True);
+            for PP in Reaction.Products do
+              InReaction.AddOrSetValue(PP.Species.Id, True);
+
+            var KLIds := TExpressionNode.GetIdentifiers(AntRct.KineticAST);
+            for var KLId in KLIds do
+            begin
+              if InReaction.ContainsKey(KLId)         then Continue; // participant
+              if AntModel.FindSpecies(KLId) < 0       then Continue; // parameter, not species
+
+              // Ensure a visual node exists for this modifier species.
+              var ModNode : TSpeciesNode;
+              if not Placed.TryGetValue(KLId, ModNode) then
+              begin
+                // Species referenced in kinetic law but not yet placed —
+                // create a node above the reaction row.
+                ModNode    := AModel.AddSpecies(KLId, MID_X,
+                                RowCY - SPECIES_PITCH, NODE_W, NODE_H);
+                ModNode.Id := KLId;
+                AntS       := AntModel.FindSpecies(KLId);
+                if AntS >= 0 then
+                begin
+                  ModNode.IsBoundary   := AntModel.Species[AntS].IsBoundary;
+                  ModNode.IsConstant   := AntModel.Species[AntS].IsConstant;
+                  ModNode.Compartment  := AntModel.Species[AntS].Compartment;
+                  ModNode.InitialValue := AntModel.Species[AntS].InitialValue;
+                end;
+                Placed.Add(KLId, ModNode);
+              end;
+
+              // Guard against duplicate modifiers (can arise if species appears
+              // in the kinetic law more than once, though GetIdentifiers dedupes).
+              var AlreadyMod := False;
+              for var MP in Reaction.Modifiers do
+                if MP.Species.Id = KLId then begin AlreadyMod := True; Break; end;
+              if not AlreadyMod then
+                Reaction.Modifiers.Add(TParticipant.Create(ModNode, 1.0));
+            end;
+          finally
+            InReaction.Free;
+          end;
+        end;
+
+        // --- Null-node injection for empty sides (post-conversion counts) ---
+        if Reaction.Reactants.Count = 0 then
+        begin
+          var NullId   := '_source_' + Reaction.Id;
+          var NullNode := AModel.AddSpecies(NullId,
+                            LEFT_MARGIN, RowCY, NULL_NODE_W, NULL_NODE_H);
+          NullNode.Id         := NullId;
+          NullNode.IsNullNode := True;
+          Placed.Add(NullId, NullNode);
+          Reaction.Reactants.Add(TParticipant.Create(NullNode, 1.0));
+        end;
+
+        if Reaction.Products.Count = 0 then
+        begin
+          var NullId   := '_sink_' + Reaction.Id;
+          var NullNode := AModel.AddSpecies(NullId,
+                            RIGHT_MARGIN, RowCY, NULL_NODE_W, NULL_NODE_H);
+          NullNode.Id         := NullId;
+          NullNode.IsNullNode := True;
+          Placed.Add(NullId, NullNode);
+          Reaction.Products.Add(TParticipant.Create(NullNode, 1.0));
         end;
 
         Inc(RowIndex);
@@ -367,6 +494,7 @@ begin
     for S in AModel.Species do
     begin
       if S.IsAlias then Continue;
+      if S.IsNullNode then Continue;
       if not HasSpec then
       begin
         HasSpec := True;
@@ -389,15 +517,19 @@ begin
       begin
         ReactionStr := '  ' + R.Id + ': ';
 
+        // --- Reactant side ---
+        var WrR := 0;
         for i := 0 to R.Reactants.Count - 1 do
         begin
           Part := R.Reactants[i];
-          if i > 0 then ReactionStr := ReactionStr + ' + ';
+          if Part.Species.IsNullNode then Continue;   // sink/source node is invisible in text
+          if WrR > 0 then ReactionStr := ReactionStr + ' + ';
           if Abs(Part.Stoichiometry - 1.0) > 1e-9 then
             ReactionStr := ReactionStr + FloatToStr(Part.Stoichiometry) + ' ';
           Prefix := '';
           if Part.Species.IsBoundary then Prefix := '$';
           ReactionStr := ReactionStr + Prefix + Part.Species.Id;
+          Inc(WrR);
         end;
 
         if R.IsReversible then
@@ -405,14 +537,19 @@ begin
         else
           ReactionStr := ReactionStr + ' -> ';
 
+        // --- Product side ---
+        var WrP := 0;
         for i := 0 to R.Products.Count - 1 do
         begin
           Part := R.Products[i];
-          if i > 0 then ReactionStr := ReactionStr + ' + ';
+          if Part.Species.IsNullNode then Continue;
+          if WrP > 0 then ReactionStr := ReactionStr + ' + ';
           if Abs(Part.Stoichiometry - 1.0) > 1e-9 then
             ReactionStr := ReactionStr + FloatToStr(Part.Stoichiometry) + ' ';
+          Prefix := '';
           if Part.Species.IsBoundary then Prefix := '$';
           ReactionStr := ReactionStr + Prefix + Part.Species.Id;
+          Inc(WrP);
         end;
 
         if R.KineticLaw <> '' then
@@ -442,6 +579,7 @@ begin
       for S in AModel.Species do
       begin
         if S.IsAlias then Continue;
+        if S.IsNullNode then Continue;
         Lines.Add(Format('  %s = %g;', [S.Id, S.InitialValue]));
       end;
       Lines.Add('');
@@ -476,4 +614,6 @@ begin
   end;
 end;
 
+initialization
+  TAntimonyBridge.ConvertCatalyticSpecies := True;
 end.
