@@ -1,0 +1,80 @@
+object frmPreferences: TfrmPreferences
+  Left = 0
+  Top = 0
+  Caption = 'Preferences'
+  ClientHeight = 480
+  ClientWidth = 640
+  Position = ScreenCenter
+  FormFactor.Width = 320
+  FormFactor.Height = 480
+  FormFactor.Devices = [Desktop]
+  OnCreate = FormCreate
+  DesignerMasterStyle = 0
+  object Layout2: TLayout
+    Align = Bottom
+    Position.Y = 430.000000000000000000
+    Size.Width = 640.000000000000000000
+    Size.Height = 50.000000000000000000
+    Size.PlatformDefault = False
+    TabOrder = 0
+    object btnOK: TButton
+      Position.X = 452.000000000000000000
+      Position.Y = 16.000000000000000000
+      TabOrder = 0
+      Text = 'OK'
+      OnClick = btnOKClick
+    end
+    object btnCancel: TButton
+      Position.X = 546.000000000000000000
+      Position.Y = 16.000000000000000000
+      TabOrder = 1
+      Text = 'Cancel'
+      OnClick = btnCancelClick
+    end
+  end
+  object TabControl1: TTabControl
+    Align = Client
+    Margins.Left = 10.000000000000000000
+    Margins.Right = 10.000000000000000000
+    Size.Width = 620.000000000000000000
+    Size.Height = 430.000000000000000000
+    Size.PlatformDefault = False
+    TabIndex = 0
+    TabOrder = 1
+    TabPosition = PlatformDefault
+    Sizes = (
+      620s
+      404s)
+    object tabPreferences: TTabItem
+      CustomIcon = <
+        item
+        end>
+      IsSelected = True
+      Size.Width = 82.000000000000000000
+      Size.Height = 26.000000000000000000
+      Size.PlatformDefault = False
+      StyleLookup = ''
+      TabOrder = 0
+      Text = 'Preferences'
+      object Rectangle1: TRectangle
+        Align = Client
+        Fill.Color = claWhitesmoke
+        HitTest = False
+        Size.Width = 620.000000000000000000
+        Size.Height = 404.000000000000000000
+        Size.PlatformDefault = False
+        Stroke.Kind = None
+        object chkConvertCatalyticReaction: TCheckBox
+          Position.X = 24.000000000000000000
+          Position.Y = 32.000000000000000000
+          Size.Width = 289.000000000000000000
+          Size.Height = 19.000000000000000000
+          Size.PlatformDefault = False
+          TabOrder = 0
+          Text = 'Convert A -> A + B to ->B type reaction'
+          OnChange = chkConvertCatalyticReactionChange
+        end
+      end
+    end
+  end
+end

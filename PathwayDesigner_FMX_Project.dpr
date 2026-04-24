@@ -22,8 +22,9 @@ uses
   uUndoManager in 'Src\uUndoManager.pas',
   uSBMLExport in 'src\uSBMLExport.pas',
   uSBMLBridge in 'src\uSBMLBridge.pas',
-  uColorPicker in 'src\uColorPicker.pas';
-
+  uColorPicker in 'src\uColorPicker.pas' {$R *.res},
+  ufPreferences in 'ufPreferences.pas' {frmPreferences},
+  uPreferencesObject in 'uPreferencesObject.pas';
 
 {$R *.res}
 

@@ -70,7 +70,9 @@ uses
   FMX.ScrollBox,
   FMX.Memo,
   uColorPicker,
-  uUndoManager;
+  uUndoManager,
+  uPreferencesObject,
+  ufPreferences;
 
 
 type
@@ -186,6 +188,7 @@ type
     nbLineWidth: TNumberBox;
     Label7: TLabel;
     StyleBook1: TStyleBook;
+    mnuPreferences: TMenuItem;
     procedure btnAddBiUniClick(Sender: TObject);
     procedure btnAddSpeciesClick(Sender: TObject);
     procedure btnAddUniBiClick(Sender: TObject);
@@ -257,6 +260,7 @@ type
     procedure PaintBoxMouseWheel(Sender: TObject; Shift: TShiftState; WheelDelta:
         Integer; var Handled: Boolean);
     procedure VScrollBarChange(Sender: TObject);
+    procedure mnuPreferencesClick(Sender: TObject);
   private
     { Private declarations }
     // --- Domain objects ---
@@ -333,6 +337,8 @@ Uses FMX.Printer, Math;
 
 procedure TfrmMain.FormDestroy(Sender: TObject);
 begin
+  SavePreferences;
+
   FreeAndNil(FStyleSpeciesBefore);
   FreeAndNil(FStyleReactionBefore);
 
@@ -472,6 +478,8 @@ procedure TfrmMain.FormCreate(Sender: TObject);
 begin
   inherited;
   Caption := 'Biochemical Network Editor';
+
+  LoadPreferences;
 
   // --- Domain objects -----------------------------------------------------
   FModel := TBioModel.Create;
@@ -1601,6 +1609,25 @@ begin
   end;
 end;
 
+
+procedure TfrmMain.mnuPreferencesClick(Sender: TObject);
+begin
+  if not Assigned(frmPreferences) then
+     frmPreferences := TfrmPreferences.Create (nil);
+
+  frmPreferences.chkConvertCatalyticReaction.IsChecked := PreferencesObject.ConvertCatalyticReactions;
+
+  if frmPreferences.ShowModal = mrOk then
+     begin
+     if frmPreferences.chkConvertCatalyticReaction.IsChecked then
+        TAntimonyBridge.ConvertCatalyticSpecies := True
+     else
+        TAntimonyBridge.ConvertCatalyticSpecies := False;
+     PreferencesObject.ConvertCatalyticReactions := TAntimonyBridge.ConvertCatalyticSpecies;
+     end
+  else
+     FreeAndNil(frmPreferences);
+end;
 
 procedure TfrmMain.mnuPrintClick(Sender: TObject);
 begin

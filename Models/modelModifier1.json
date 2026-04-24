@@ -1,0 +1,88 @@
+﻿{
+  "version": 3,
+  "modelName": "anonymous",
+  "compartments": [
+    {
+      "id": "defaultCompartment",
+      "size": 1.0,
+      "dimensions": 3
+    }
+  ],
+  "parameters": [
+    {
+      "variable": "k1",
+      "expression": "0"
+    },
+    {
+      "variable": "Km",
+      "expression": "0"
+    },
+    {
+      "variable": "Ki",
+      "expression": "0"
+    }
+  ],
+  "assignmentRules": [
+  ],
+  "species": [
+    {
+      "id": "M",
+      "x": 516.666625976562,
+      "y": 261.333343505859,
+      "w": 80.0,
+      "h": 36.0,
+      "initialValue": 0.0,
+      "isBoundary": false,
+      "isConstant": false
+    },
+    {
+      "id": "A",
+      "x": 128.0,
+      "y": 283.0,
+      "w": 80.0,
+      "h": 36.0,
+      "initialValue": 0.0,
+      "isBoundary": false,
+      "isConstant": false
+    },
+    {
+      "id": "B",
+      "x": 680.0,
+      "y": 528.333312988281,
+      "w": 80.0,
+      "h": 36.0,
+      "initialValue": 0.0,
+      "isBoundary": false,
+      "isConstant": false
+    }
+  ],
+  "reactions": [
+    {
+      "id": "R1",
+      "jx": 273.0,
+      "jy": 473.0,
+      "kineticLaw": "(k1 * A) / (Km + (A * (1 + (M / Ki))))",
+      "isReversible": false,
+      "isLinear": false,
+      "isBezier": false,
+      "isJunctionSmooth": false,
+      "reactants": [
+        {
+          "id": "A",
+          "stoichiometry": 1.0
+        }
+      ],
+      "products": [
+        {
+          "id": "B",
+          "stoichiometry": 1.0
+        }
+      ],
+      "modifiers": [
+        {
+          "id": "M"
+        }
+      ]
+    }
+  ]
+}
