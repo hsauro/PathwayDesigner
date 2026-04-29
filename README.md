@@ -61,10 +61,19 @@ This version adds:
 - Added ability to show or hide reaction junction point
 - Create new color palette selection popup
 - Changed color format in json to hex RRGGBBAA
-  
+
+### Versiion: 0.31
+
+- Bug fixes
+
+### Versiion: 0.32
+
+- When confronted with a reaction such as -> A, it now adds a null species instead of leaving it empty.
+- The start of a preferences form was added.
+  One option was added. This option decides what it does with reactions of the form A -> A + B, kAB, with the option on it will change the reaction to -> B; kAB and add a modifier from A to the reaction.
+
 ### Not yet supported
 
-- Add modifier edges between species and reaction
 - Set font sizes for species names
 - Select different species node shapes
 - Positioning of species labels
