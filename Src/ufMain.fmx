@@ -541,6 +541,25 @@ object frmMain: TfrmMain
         Locked = True
         Text = '-'
       end
+      object mnuSelectAll: TMenuItem
+        Locked = True
+        ShortCut = 16449
+        Text = 'Select All'
+        OnClick = mnuSelectAllClick
+      end
+      object MenuItem7: TMenuItem
+        Locked = True
+        Text = '-'
+        object Label4: TLabel
+          Position.X = -31.000000000000000000
+          Position.Y = 33.000000000000000000
+          Size.Width = 81.000000000000000000
+          Size.Height = 17.000000000000000000
+          Size.PlatformDefault = False
+          Text = 'Border Width:'
+          TabOrder = 17
+        end
+      end
       object mnuPreferences: TMenuItem
         Locked = True
         Text = 'Preferences...'
@@ -699,13 +718,13 @@ object frmMain: TfrmMain
       Size.Width = 249.000000000000000000
       Size.Height = 217.000000000000000000
       Size.PlatformDefault = False
-      Text = ' Reactions '
+      Text = 'Tedit'
       TabOrder = 4
       object btnReactionColor: TColorButton
         Color = claBlack
         Position.X = 87.000000000000000000
         Position.Y = 34.000000000000000000
-        TabOrder = 41
+        TabOrder = 42
         OnClick = btnReactionColorClick
       end
       object Label6: TLabel
@@ -715,7 +734,7 @@ object frmMain: TfrmMain
         Size.Height = 17.000000000000000000
         Size.PlatformDefault = False
         Text = 'Color:'
-        TabOrder = 36
+        TabOrder = 38
       end
       object chkShowJunctionPoint: TCheckBox
         Position.X = 88.000000000000000000
@@ -723,13 +742,13 @@ object frmMain: TfrmMain
         Size.Width = 145.000000000000000000
         Size.Height = 19.000000000000000000
         Size.PlatformDefault = False
-        TabOrder = 39
+        TabOrder = 40
         Text = 'Show Junction Node'
         OnChange = chkShowJunctionPointChange
       end
       object nbLineWidth: TNumberBox
         Touch.InteractiveGestures = [LongTap, DoubleTap]
-        TabOrder = 38
+        TabOrder = 39
         Cursor = crIBeam
         ValueType = Float
         KeyboardType = NumbersAndPunctuation
@@ -744,7 +763,26 @@ object frmMain: TfrmMain
         Size.Height = 17.000000000000000000
         Size.PlatformDefault = False
         Text = 'Border Width:'
+        TabOrder = 18
+      end
+      object Label8: TLabel
+        Position.X = 19.000000000000000000
+        Position.Y = 118.000000000000000000
+        Size.Width = 81.000000000000000000
+        Size.Height = 17.000000000000000000
+        Size.PlatformDefault = False
+        Text = 'Kinetic Law:'
         TabOrder = 17
+      end
+      object edtRateLaw: TEdit
+        Touch.InteractiveGestures = [LongTap, DoubleTap]
+        TabOrder = 43
+        Position.X = 87.000000000000000000
+        Position.Y = 118.000000000000000000
+        Size.Width = 154.000000000000000000
+        Size.Height = 20.000000000000000000
+        Size.PlatformDefault = False
+        OnExit = edtRateLawExit
       end
     end
   end

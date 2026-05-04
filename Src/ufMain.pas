@@ -189,6 +189,11 @@ type
     Label7: TLabel;
     StyleBook1: TStyleBook;
     mnuPreferences: TMenuItem;
+    mnuSelectAll: TMenuItem;
+    MenuItem7: TMenuItem;
+    Label4: TLabel;
+    Label8: TLabel;
+    edtRateLaw: TEdit;
     procedure btnAddBiUniClick(Sender: TObject);
     procedure btnAddSpeciesClick(Sender: TObject);
     procedure btnAddUniBiClick(Sender: TObject);
@@ -261,6 +266,8 @@ type
         Integer; var Handled: Boolean);
     procedure VScrollBarChange(Sender: TObject);
     procedure mnuPreferencesClick(Sender: TObject);
+    procedure mnuSelectAllClick(Sender: TObject);
+    procedure edtRateLawExit(Sender: TObject);
   private
     { Private declarations }
     // --- Domain objects ---
@@ -427,6 +434,7 @@ begin
     FView.EffectiveReactionColors(FSelectedReaction, LineColor, LineWidth);
     btnReactionColor.Color := LineColor;
     nbLineWidth.Value      := LineWidth;
+    edtRateLaw.Text        := FSelectedReaction.KineticLaw;
   end
   else if AInfo.SpeciesCount > 1 then
   begin
@@ -446,6 +454,7 @@ begin
     edtNumConcentration.Value := 0;
     nbBorderWidth.Value       := 0;
     nbLineWidth.Value         := 0;
+    edtRateLaw.Text := '';
   end;
 end;
 
@@ -900,6 +909,18 @@ begin
 end;
 
 
+procedure TfrmMain.edtRateLawExit(Sender: TObject);
+var R : TReaction;
+begin
+  if FUpdatingControls then Exit;
+
+  for R in FModel.SelectedReactions do
+      begin
+      R.KineticLaw := edtRateLaw.Text;
+      end;
+  PaintBox.Redraw;
+end;
+
 procedure TfrmMain.FormKeyDown(Sender: TObject; var Key: Word; var KeyChar:
     WideChar; Shift: TShiftState);
 begin
@@ -1232,6 +1253,12 @@ end;
 procedure TfrmMain.mnuSaveToSBMLClick(Sender: TObject);
 begin
    ExportSBML;
+end;
+
+procedure TfrmMain.mnuSelectAllClick(Sender: TObject);
+begin
+  FView.SelectAll;
+  PaintBox.Redraw;
 end;
 
 procedure TfrmMain.ImportSBML;

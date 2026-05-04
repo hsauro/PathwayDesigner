@@ -1125,6 +1125,8 @@ var
   SnapBefore   : string;
   SnapNum      : Integer;
 begin
+  HideTooltip;
+
   SelSpecies   := FModel.SelectedSpecies;
   SelReactions := FModel.SelectedReactions;
   if (Length(SelSpecies) = 0) and (Length(SelReactions) = 0) then Exit;
