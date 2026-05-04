@@ -6,8 +6,8 @@ interface
 // Major.Minor.BugFix
 
 const
-  APP_VERSION = '0.36';
-  BUILD_DATE  = '2026-03-16 22:05:49';
+  APP_VERSION = '0.37';
+  BUILD_DATE  = '2026-05-4';
 
 
 implementation

@@ -1,0 +1,85 @@
+﻿{
+  "version": 3,
+  "modelName": "",
+  "compartments": [
+  ],
+  "parameters": [
+    {
+      "variable": "k4",
+      "expression": "0.1"
+    }
+  ],
+  "assignmentRules": [
+  ],
+  "species": [
+    {
+      "id": "S1",
+      "x": 224.0,
+      "y": 173.0,
+      "w": 80.0,
+      "h": 36.0,
+      "initialValue": 0.0,
+      "isBoundary": false,
+      "isConstant": false
+    },
+    {
+      "id": "S2",
+      "x": 481.0,
+      "y": 276.0,
+      "w": 80.0,
+      "h": 36.0,
+      "initialValue": 0.0,
+      "isBoundary": false,
+      "isConstant": false
+    },
+    {
+      "id": "S3",
+      "x": 427.0,
+      "y": 91.0,
+      "w": 80.0,
+      "h": 36.0,
+      "initialValue": 0.0,
+      "isBoundary": false,
+      "isConstant": false
+    }
+  ],
+  "reactions": [
+    {
+      "id": "R4",
+      "jx": 352.5,
+      "jy": 224.5,
+      "kineticLaw": "k4*S1*S3",
+      "isReversible": false,
+      "isLinear": false,
+      "isBezier": true,
+      "isJunctionSmooth": true,
+      "reactants": [
+        {
+          "id": "S1",
+          "stoichiometry": 1.0,
+          "ctrl1x": 268.975006103516,
+          "ctrl1y": 191.024993896484,
+          "ctrl2x": 307.524993896484,
+          "ctrl2y": 206.475006103516,
+          "ctrlSet": true
+        }
+      ],
+      "products": [
+        {
+          "id": "S2",
+          "stoichiometry": 1.0,
+          "ctrl1x": 397.475006103516,
+          "ctrl1y": 242.524993896484,
+          "ctrl2x": 436.024993896484,
+          "ctrl2y": 257.975006103516,
+          "ctrlSet": true
+        }
+      ],
+      "modifiers": [
+        {
+          "id": "S3"
+        }
+      ]
+    }
+  ]
+}

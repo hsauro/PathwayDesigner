@@ -34,7 +34,10 @@ uses
   uAntimonyBridge,
   uSBMLBridge,
   uAutoLayout,
-  uUndoManager;
+  uUndoManager,
+  uAntimonyLexer,
+  uAntimonyExpressionParser,
+  uExpressionNode;
 
 // ---------------------------------------------------------------------------
 const
@@ -370,6 +373,8 @@ type
     function  CanRedo: Boolean;
     function  UndoDescription: string;
     function  RedoDescription: string;
+
+    procedure SyncModifiersFromKineticLaw(R: TReaction);
 
     // Toggle IsLinear on all currently selected UniUni reactions.
     // Reactions that are not UniUni are silently skipped.
@@ -1635,6 +1640,95 @@ begin
   for R in FModel.Reactions do R.Selected := True;
   NotifySelectionChanged;
 end;
+
+
+procedure TDiagramView.SyncModifiersFromKineticLaw(R: TReaction);
+var
+  Lexer       : TAntimonyLexer;
+  Parser      : TAntimonyExpressionParser;
+  AST         : TExpressionNode;
+  Identifiers : TArray<string>;
+  Id          : string;
+  S           : TSpeciesNode;
+  IsParticipant : Boolean;
+  Part        : TParticipant;
+  i           : Integer;
+begin
+  if R.KineticLaw = '' then
+  begin
+    R.Modifiers.Clear;
+    Exit;
+  end;
+
+  // Parse kinetic law and collect all identifiers
+  Lexer := TAntimonyLexer.Create(R.KineticLaw);
+  try
+    Parser := TAntimonyExpressionParser.Create(Lexer);
+    try
+      try
+        AST := Parser.Parse;
+      except
+        Exit;   // unparseable — leave modifiers unchanged
+      end;
+      try
+        Identifiers := TExpressionNode.GetIdentifiers(AST);
+      finally
+        AST.Free;
+      end;
+    finally
+      Parser.Free;
+    end;
+  finally
+    Lexer.Free;
+  end;
+
+  // Build set of species Ids already covered as reactants or products
+  var ParticipantIds := TDictionary<string, Boolean>.Create;
+  try
+    for Part in R.Reactants do
+      ParticipantIds.AddOrSetValue(Part.Species.Id, True);
+    for Part in R.Products do
+      ParticipantIds.AddOrSetValue(Part.Species.Id, True);
+
+    // Remove modifiers no longer referenced in the kinetic law
+    var IdSet := TDictionary<string, Boolean>.Create;
+    try
+      for Id in Identifiers do
+        IdSet.AddOrSetValue(Id, True);
+
+      i := R.Modifiers.Count - 1;
+      while i >= 0 do
+      begin
+        if not IdSet.ContainsKey(R.Modifiers[i].Species.Id) then
+          R.Modifiers.Delete(i);
+        Dec(i);
+      end;
+    finally
+      IdSet.Free;
+    end;
+
+    // Add new modifiers for identifiers that are species but not participants
+    for Id in Identifiers do
+    begin
+      if ParticipantIds.ContainsKey(Id) then Continue;
+
+      S := FModel.FindSpeciesById(Id);
+      if S = nil then Continue;
+
+      // Check not already in modifiers
+      IsParticipant := False;
+      for Part in R.Modifiers do
+        if Part.Species.Id = Id then begin IsParticipant := True; Break; end;
+      if IsParticipant then Continue;
+
+      R.Modifiers.Add(TParticipant.Create(S, 1.0));
+    end;
+
+  finally
+    ParticipantIds.Free;
+  end;
+end;
+
 
 procedure TDiagramView.ToggleLinearSelected;
 var

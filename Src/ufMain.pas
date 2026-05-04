@@ -917,6 +917,7 @@ begin
   for R in FModel.SelectedReactions do
       begin
       R.KineticLaw := edtRateLaw.Text;
+      FView.SyncModifiersFromKineticLaw(R);
       end;
   PaintBox.Redraw;
 end;
