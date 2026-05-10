@@ -75,10 +75,9 @@ This version adds:
 ### Versiion: 0.37
 
  - Add initial support for modifiers
- - Allow users ot edit the rate law
- - Autosync changes inteh rate law with teh diagram, especially for modifiers.
- - Fixed bugs in SBMLLayout export, fixed but in tooltips coliding with delete species or reaction
- - 
+ - Allow users to edit the rate law
+ - Autosync changes in the rate law with the diagram, especially for modifiers.
+ - Fixed bugs in SBMLLayout export, fixed bug in tooltips colliding with delete species or reaction
 
 ### Not yet supported
 
