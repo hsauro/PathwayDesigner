@@ -56,6 +56,8 @@ object frmPreferences: TfrmPreferences
       StyleLookup = ''
       TabOrder = 0
       Text = 'Preferences'
+      ExplicitSize.cx = 82.000000000000000000
+      ExplicitSize.cy = 26.000000000000000000
       object Rectangle1: TRectangle
         Align = Client
         Fill.Color = claWhitesmoke
@@ -70,8 +72,18 @@ object frmPreferences: TfrmPreferences
           Size.Width = 289.000000000000000000
           Size.Height = 19.000000000000000000
           Size.PlatformDefault = False
-          TabOrder = 0
+          TabOrder = 1
           Text = 'Convert A -> A + B to ->B type reaction'
+          OnChange = chkConvertCatalyticReactionChange
+        end
+        object chkShowNullSpecies: TCheckBox
+          Position.X = 24.000000000000000000
+          Position.Y = 56.000000000000000000
+          Size.Width = 289.000000000000000000
+          Size.Height = 19.000000000000000000
+          Size.PlatformDefault = False
+          TabOrder = 0
+          Text = 'Show null species, i.e A ->; becomes A->null;'
           OnChange = chkConvertCatalyticReactionChange
         end
       end

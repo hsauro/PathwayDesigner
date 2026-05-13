@@ -1644,6 +1644,7 @@ begin
      frmPreferences := TfrmPreferences.Create (nil);
 
   frmPreferences.chkConvertCatalyticReaction.IsChecked := PreferencesObject.ConvertCatalyticReactions;
+  frmPreferences.chkShowNullSpecies.IsChecked := PreferencesObject.ShowNullSpecies;
 
   if frmPreferences.ShowModal = mrOk then
      begin
@@ -1651,10 +1652,13 @@ begin
         TAntimonyBridge.ConvertCatalyticSpecies := True
      else
         TAntimonyBridge.ConvertCatalyticSpecies := False;
+     PreferencesObject.ShowNullSpecies := frmPreferences.chkShowNullSpecies.IsChecked;
+
      PreferencesObject.ConvertCatalyticReactions := TAntimonyBridge.ConvertCatalyticSpecies;
      end
   else
      FreeAndNil(frmPreferences);
+  PaintBox.Redraw;
 end;
 
 procedure TfrmMain.mnuPrintClick(Sender: TObject);

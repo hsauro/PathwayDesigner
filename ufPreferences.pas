@@ -16,6 +16,7 @@ type
     btnCancel: TButton;
     Rectangle1: TRectangle;
     chkConvertCatalyticReaction: TCheckBox;
+    chkShowNullSpecies: TCheckBox;
     procedure btnCancelClick(Sender: TObject);
     procedure btnOKClick(Sender: TObject);
     procedure FormCreate(Sender: TObject);

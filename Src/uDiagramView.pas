@@ -37,7 +37,8 @@ uses
   uUndoManager,
   uAntimonyLexer,
   uAntimonyExpressionParser,
-  uExpressionNode;
+  uExpressionNode,
+  uPreferencesObject;
 
 // ---------------------------------------------------------------------------
 const
@@ -2555,6 +2556,12 @@ begin
     begin
       var Reactant := R.Reactants[0].Species;
       var Product  := R.Products[0].Species;
+      // If either endpoint is a null node and we are hiding null species,
+      // suppress the arc for that participant entirely.
+      if not PreferencesObject.ShowNullSpecies then
+      begin
+        if Reactant.IsNullNode or Product.IsNullNode then Continue;
+      end;
       DirW.X := Product.Center.X - Reactant.Center.X;
       DirW.Y := Product.Center.Y - Reactant.Center.Y;
       DirW   := NormalizeVec(DirW);
@@ -2591,6 +2598,7 @@ begin
       for i := 0 to FanTotal - 1 do
       begin
         P := R.Reactants[i];
+        if P.Species.IsNullNode and not PreferencesObject.ShowNullSpecies then Continue;
         // Conceptual endpoints: centre --> junction
         GetCtrlPts(P, P.Species.Center, JPos, i, FanTotal, True, C1W, C2W);
         // Find t where the curve exits the species rectangle
@@ -2628,6 +2636,7 @@ begin
       for i := 0 to FanTotal - 1 do
       begin
         P := R.Products[i];
+        if P.Species.IsNullNode and not PreferencesObject.ShowNullSpecies then Continue;
         // Conceptual endpoints: junction --> centre
         GetCtrlPts(P, JPos, P.Species.Center, i, FanTotal, False, C1W, C2W);
         // Find t where the curve enters the species rectangle
@@ -2665,6 +2674,7 @@ begin
     // --- Straight reaction ------------------------------------------------
     for P in R.Reactants do
     begin
+      if P.Species.IsNullNode and not PreferencesObject.ShowNullSpecies then Continue;
       BoundW := RectBoundaryIntersect(P.Species.Center, P.Species.HalfW,
                                       P.Species.HalfH, JPos);
       // Direction from boundary toward junction; back start off the border.
@@ -2684,6 +2694,7 @@ begin
 
     for P in R.Products do
     begin
+      if P.Species.IsNullNode and not PreferencesObject.ShowNullSpecies then Continue;
       TipW   := ProductLineTip(P.Species.Center, P.Species.HalfW,
                                 P.Species.HalfH, JPos, VIEW_PRODUCT_GAP);
       TipScr := W2S(TipW);
@@ -2805,6 +2816,8 @@ begin
 
     if S.IsNullNode then
     begin
+      if not PreferencesObject.ShowNullSpecies then Continue;
+
       var CScr   := W2S(S.Center);
       var Radius := W2SLen(S.HalfW);          // circle inscribed in Width
 
@@ -2925,6 +2938,7 @@ begin
     // Null nodes get a circular halo; regular nodes get a rounded-rect halo.
     if S.IsNullNode then
     begin
+      if not PreferencesObject.ShowNullSpecies then Continue;
       var CScr      := W2S(S.Center);
       var HaloR     := W2SLen(S.HalfW + VIEW_SEL_RING_OUTSET);
       ACanvas.DrawCircle(CScr, HaloR, RingPaint);

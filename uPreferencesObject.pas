@@ -7,6 +7,7 @@ Uses System.IOUtils, System.JSON.Serializers;
 type
   TPreferences = class
      ConvertCatalyticReactions : Boolean;
+     ShowNullSpecies : Boolean; // If true shows a null species, such as A ->; as A -> null;
 
      constructor Create;
 
@@ -24,6 +25,7 @@ begin
   inherited Create;
 
   ConvertCatalyticReactions := True;
+  ShowNullSpecies := True;
 end;
 
 
