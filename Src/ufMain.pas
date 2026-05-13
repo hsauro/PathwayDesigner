@@ -1639,6 +1639,9 @@ end;
 
 
 procedure TfrmMain.mnuPreferencesClick(Sender: TObject);
+var
+  OldCatalytic : Boolean;
+  NewCatalytic : Boolean;
 begin
   if not Assigned(frmPreferences) then
      frmPreferences := TfrmPreferences.Create (nil);
@@ -1646,18 +1649,29 @@ begin
   frmPreferences.chkConvertCatalyticReaction.IsChecked := PreferencesObject.ConvertCatalyticReactions;
   frmPreferences.chkShowNullSpecies.IsChecked := PreferencesObject.ShowNullSpecies;
 
+  OldCatalytic := PreferencesObject.ConvertCatalyticReactions;
+
   if frmPreferences.ShowModal = mrOk then
      begin
-     if frmPreferences.chkConvertCatalyticReaction.IsChecked then
-        TAntimonyBridge.ConvertCatalyticSpecies := True
-     else
-        TAntimonyBridge.ConvertCatalyticSpecies := False;
-     PreferencesObject.ShowNullSpecies := frmPreferences.chkShowNullSpecies.IsChecked;
+     NewCatalytic := frmPreferences.chkConvertCatalyticReaction.IsChecked;
+     TAntimonyBridge.ConvertCatalyticSpecies    := NewCatalytic;
+     PreferencesObject.ConvertCatalyticReactions := NewCatalytic;
 
-     PreferencesObject.ConvertCatalyticReactions := TAntimonyBridge.ConvertCatalyticSpecies;
-     end
-  else
-     FreeAndNil(frmPreferences);
+     PreferencesObject.ShowNullSpecies := frmPreferences.chkShowNullSpecies.IsChecked;
+     SavePreferences;
+
+     // Catalytic conversion restructures the model, not just the rendering,
+     // so a redraw alone is insufficient.  Re-import from the stored source
+     // so the bridge re-runs with the updated flag.  Only do this when the
+     // setting actually changed and a source exists to replay.
+     if (NewCatalytic <> OldCatalytic) and (FView.LastAntimonySource <> '') then
+       begin
+       FView.ImportAntimony(FView.LastAntimonySource);
+       UpdateScrollBars;
+       end;
+     end;
+
+  FreeAndNil(frmPreferences);
   PaintBox.Redraw;
 end;
 

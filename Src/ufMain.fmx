@@ -630,7 +630,7 @@ object frmMain: TfrmMain
       end
       object edtNumConcentration: TNumberBox
         Touch.InteractiveGestures = [LongTap, DoubleTap]
-        TabOrder = 38
+        TabOrder = 39
         Cursor = crIBeam
         ValueType = Float
         KeyboardType = NumbersAndPunctuation
@@ -644,7 +644,7 @@ object frmMain: TfrmMain
         Size.Width = 169.000000000000000000
         Size.Height = 19.000000000000000000
         Size.PlatformDefault = False
-        TabOrder = 39
+        TabOrder = 40
         Text = 'Boundary Species'
         OnChange = chkIsBoundarySpeciesChange
       end
@@ -652,7 +652,7 @@ object frmMain: TfrmMain
         Color = claBlack
         Position.X = 95.000000000000000000
         Position.Y = 50.000000000000000000
-        TabOrder = 41
+        TabOrder = 42
         OnClick = btnSpeciesFillColorClick
       end
       object ColorAnimation3: TColorAnimation
@@ -664,12 +664,12 @@ object frmMain: TfrmMain
         Color = claBlack
         Position.X = 95.000000000000000000
         Position.Y = 77.000000000000000000
-        TabOrder = 40
+        TabOrder = 41
         OnClick = btnSpeciesBorderColorClick
       end
       object nbBorderWidth: TNumberBox
         Touch.InteractiveGestures = [LongTap, DoubleTap]
-        TabOrder = 37
+        TabOrder = 38
         Cursor = crIBeam
         ValueType = Float
         KeyboardType = NumbersAndPunctuation
@@ -689,8 +689,8 @@ object frmMain: TfrmMain
       Size.Height = 297.000000000000000000
       Size.PlatformDefault = False
       TabOrder = 1
-      Viewport.Width = 266.000000000000000000
-      Viewport.Height = 297.000000000000000000
+      Viewport.Width = 262.000000000000000000
+      Viewport.Height = 293.000000000000000000
     end
     object btnLoadAnt: TButton
       Position.X = 13.000000000000000000
@@ -724,7 +724,7 @@ object frmMain: TfrmMain
         Color = claBlack
         Position.X = 87.000000000000000000
         Position.Y = 34.000000000000000000
-        TabOrder = 41
+        TabOrder = 42
         OnClick = btnReactionColorClick
       end
       object Label6: TLabel
@@ -734,7 +734,7 @@ object frmMain: TfrmMain
         Size.Height = 17.000000000000000000
         Size.PlatformDefault = False
         Text = 'Color:'
-        TabOrder = 37
+        TabOrder = 38
       end
       object chkShowJunctionPoint: TCheckBox
         Position.X = 88.000000000000000000
@@ -742,13 +742,13 @@ object frmMain: TfrmMain
         Size.Width = 145.000000000000000000
         Size.Height = 19.000000000000000000
         Size.PlatformDefault = False
-        TabOrder = 39
+        TabOrder = 40
         Text = 'Show Junction Node'
         OnChange = chkShowJunctionPointChange
       end
       object nbLineWidth: TNumberBox
         Touch.InteractiveGestures = [LongTap, DoubleTap]
-        TabOrder = 38
+        TabOrder = 39
         Cursor = crIBeam
         ValueType = Float
         KeyboardType = NumbersAndPunctuation
@@ -776,7 +776,7 @@ object frmMain: TfrmMain
       end
       object edtRateLaw: TEdit
         Touch.InteractiveGestures = [LongTap, DoubleTap]
-        TabOrder = 42
+        TabOrder = 43
         Position.X = 87.000000000000000000
         Position.Y = 118.000000000000000000
         Size.Width = 154.000000000000000000

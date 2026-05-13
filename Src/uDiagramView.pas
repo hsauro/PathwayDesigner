@@ -37,7 +37,8 @@ uses
   uUndoManager,
   uAntimonyLexer,
   uAntimonyExpressionParser,
-  uExpressionNode;
+  uExpressionNode,
+  uPreferencesObject;
 
 // ---------------------------------------------------------------------------
 const
@@ -139,6 +140,8 @@ type
     FDragHasCtrlPts   : Boolean;   // any CtrlPtsSet handles need translating
     FDragNodesSnap    : string;    // pre-drag snapshot when ctrl pts are affected
     FDragNodesSnapNum : Integer;
+
+    FLastAntimonySource : string;
 
     FDraggedJunction : TReaction;
 
@@ -362,6 +365,8 @@ type
 
     procedure SaveToFile (const AFileName: string);
     procedure LoadFromFile(const AFileName: string);
+
+    property LastAntimonySource : string read FLastAntimonySource;
 
     property Model              : TBioModel         read FModel;
     property ScrollOffset       : TPointF            read FScrollOffset       write FScrollOffset;
@@ -2647,6 +2652,13 @@ begin
     begin
       var Reactant := R.Reactants[0].Species;
       var Product  := R.Products[0].Species;
+
+      // Don't draw a leg to/from a hidden null node
+      if (not PreferencesObject.ShowNullSpecies) and
+        (Reactant.IsNullNode or Product.IsNullNode) then
+          Continue;
+
+
       DirW.X := Product.Center.X - Reactant.Center.X;
       DirW.Y := Product.Center.Y - Reactant.Center.Y;
       DirW   := NormalizeVec(DirW);
@@ -2686,6 +2698,9 @@ begin
       for i := 0 to FanTotal - 1 do
       begin
         P := R.Reactants[i];
+        if (not PreferencesObject.ShowNullSpecies) and P.Species.IsNullNode then
+           Continue;                // skip leg to hidden null
+
         // Conceptual endpoints: centre --> junction
         GetCtrlPts(P, P.Species.Center, JPos, i, FanTotal, True, C1W, C2W);
         // Find t where the curve exits the species rectangle
@@ -2723,6 +2738,10 @@ begin
       for i := 0 to FanTotal - 1 do
       begin
         P := R.Products[i];
+
+        if (not PreferencesObject.ShowNullSpecies) and P.Species.IsNullNode then
+           Continue;                // skip leg from hidden null
+
         // Conceptual endpoints: junction --> centre
         GetCtrlPts(P, JPos, P.Species.Center, i, FanTotal, False, C1W, C2W);
         // Find t where the curve enters the species rectangle
@@ -2765,6 +2784,9 @@ begin
     // --- Straight reaction ------------------------------------------------
     for P in R.Reactants do
     begin
+      if (not PreferencesObject.ShowNullSpecies) and P.Species.IsNullNode then
+         Continue;
+
       BoundW := RectBoundaryIntersect(P.Species.Center, P.Species.HalfW,
                                       P.Species.HalfH, JPos);
       // Direction from boundary toward junction; back start off the border.
@@ -2784,6 +2806,9 @@ begin
 
     for P in R.Products do
     begin
+      if (not PreferencesObject.ShowNullSpecies) and P.Species.IsNullNode then
+        Continue;
+
       TipW   := ProductLineTip(P.Species.Center, P.Species.HalfW,
                                 P.Species.HalfH, JPos, VIEW_PRODUCT_GAP);
       TipScr := W2S(TipW);
@@ -2908,6 +2933,9 @@ begin
 
     if S.IsNullNode then
     begin
+      if not PreferencesObject.ShowNullSpecies then  // <-- add this guard
+         Continue;
+
       var CScr   := W2S(S.Center);
       var Radius := W2SLen(S.HalfW);          // circle inscribed in Width
 
@@ -3500,6 +3528,7 @@ var
   SnapBefore : string;
   SnapNum    : Integer;
 begin
+  FLastAntimonySource := ASource;
   CancelCurrentAction;
   SnapBefore := TakeSnapshot;
   SnapNum    := FNextSpeciesNum;
