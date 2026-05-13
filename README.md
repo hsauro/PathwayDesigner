@@ -79,6 +79,12 @@ This version adds:
  - Autosync changes in the rate law with the diagram, especially for modifiers.
  - Fixed bugs in SBMLLayout export, fixed bug in tooltips colliding with delete species or reaction
 
+### Versiion: 0.38
+
+ - Added preferences option to show or hide a null node
+ - Improved handling of bezier curves usingthe Deckard autolayout with reactions such A -> A + B
+ - Added more control to the positioning of the reaction arrow head.
+   
 ### Not yet supported
 
 - Set font sizes for species names
