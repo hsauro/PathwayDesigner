@@ -72,6 +72,13 @@ This version adds:
 - The start of a preferences form was added.
   One option was added. This option decides what it does with reactions of the form A -> A + B, kAB, with the option on it will change the reaction to -> B; kAB and add a modifier from A to the reaction.
 
+### Versiion: 0.37
+
+ - Add initial support for modifiers
+ - Allow users to edit the rate law
+ - Autosync changes in the rate law with the diagram, especially for modifiers.
+ - Fixed bugs in SBMLLayout export, fixed bug in tooltips colliding with delete species or reaction
+
 ### Not yet supported
 
 - Set font sizes for species names
