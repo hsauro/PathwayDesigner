@@ -39,6 +39,26 @@
   It is called automatically at the end of TAutoLayout.Run and can also
   be called stand-alone after a manual node move.
 
+  Looped-reaction handling (A → A + B)
+  --------------------------------------
+  When the same species appears on both sides of a reaction, two fixes
+  prevent the Bézier arcs from collapsing:
+
+  1. Force-layout spring deduplication
+     The attraction loop counts each unique species exactly once per
+     reaction.  Without this, a species on both sides gets two springs to
+     the junction, pulling the junction onto the species and causing the
+     standard junction-repositioning formula to land inside the species
+     bounding box (NODE_W = 80 px, HalfW = 40 px).
+
+  2. Junction repositioning via unique-species centroid
+     ComputeForReaction detects looped species *before* repositioning the
+     junction, then uses the centroid of all unique participant species.
+     For A → A + B this gives Junction = (A + B) / 2 instead of the
+     biased 3A/4 + B/4 from the plain (CentR + CentP) / 2 formula.
+     With a well-placed junction the 90° CentreCtrl rotation correctly
+     separates the two arcs to/from A.
+
   Convention for stored control points
   -------------------------------------
   This exactly matches ComputeAutoCtrlPts / SaveDragPositions / MaterialiseSmoothCtrlPts:
@@ -227,9 +247,10 @@ var
   Mag      : Single;
   CentreX,
   CentreY  : Single;
-  SpeciesIdx : TDictionary<string, Integer>;
-  AliasMap   : TDictionary<Integer, Integer>;
-  PrimaryIdx : Integer;
+  SpeciesIdx         : TDictionary<string, Integer>;
+  AliasMap           : TDictionary<Integer, Integer>;
+  SpringedInReaction : TDictionary<Integer, Boolean>;
+  PrimaryIdx         : Integer;
 begin
   NS    := AModel.Species.Count;
   NR    := AModel.Reactions.Count;
@@ -238,8 +259,9 @@ begin
 
   SetLength(Nodes, Total);
 
-  SpeciesIdx := TDictionary<string, Integer>.Create;
-  AliasMap   := TDictionary<Integer, Integer>.Create;
+  SpeciesIdx         := TDictionary<string, Integer>.Create;
+  AliasMap           := TDictionary<Integer, Integer>.Create;
+  SpringedInReaction := TDictionary<Integer, Boolean>.Create;
   try
     for i := 0 to NS - 1 do
     begin
@@ -340,14 +362,23 @@ begin
         end;
       end;
 
-      // Attraction: species ↔ junction springs
+      // Attraction: species ↔ junction springs.
+      // Each unique species is connected to its reaction junction by exactly
+      // ONE spring, even when it appears on both the reactant and product side
+      // (e.g. A → A + B).  Without deduplication the double spring pulls the
+      // junction close to A, which — after junction repositioning — can place
+      // the junction inside A's bounding box and collapse the Bézier arcs.
       for i := 0 to NR - 1 do
       begin
         JI := NS + i;
         R  := AModel.Reactions[i];
+        SpringedInReaction.Clear;   // reset per-reaction seen-set
+
         for P in R.Reactants do
         begin
           if not SpeciesIdx.TryGetValue(P.Species.Id, SI) then Continue;
+          if SpringedInReaction.ContainsKey(SI) then Continue;   // already sprung this reaction
+          SpringedInReaction.AddOrSetValue(SI, True);
           DX   := Nodes[JI].Pos.X - Nodes[SI].Pos.X;
           DY   := Nodes[JI].Pos.Y - Nodes[SI].Pos.Y;
           Dist := Max(MIN_DIST, Sqrt(DX * DX + DY * DY));
@@ -365,6 +396,8 @@ begin
         for P in R.Products do
         begin
           if not SpeciesIdx.TryGetValue(P.Species.Id, SI) then Continue;
+          if SpringedInReaction.ContainsKey(SI) then Continue;   // already sprung this reaction
+          SpringedInReaction.AddOrSetValue(SI, True);
           DX   := Nodes[JI].Pos.X - Nodes[SI].Pos.X;
           DY   := Nodes[JI].Pos.Y - Nodes[SI].Pos.Y;
           Dist := Max(MIN_DIST, Sqrt(DX * DX + DY * DY));
@@ -447,6 +480,7 @@ begin
       AModel.Reactions[i].JunctionPos := Nodes[NS + i].Pos;
 
   finally
+    SpringedInReaction.Free;
     AliasMap.Free;
     SpeciesIdx.Free;
   end;
@@ -568,6 +602,32 @@ const
     SumRX, SumRY, SumPX, SumPY : Single;
     CentR, CentP : TPointF;
   begin
+    // ------------------------------------------------------------------
+    //  Step 0.  Pre-scan for self-looped species.
+    //  A species is "looped" when it appears on both the reactant and
+    //  product side (e.g. A → A + B).  This scan MUST come before the
+    //  junction repositioning below, because the looped flag changes
+    //  which formula we use to place the junction.
+    //
+    //  Without early detection the standard formula
+    //    Junction = (CentR + CentP) / 2
+    //             = (A + (A+B)/2) / 2
+    //             = ¾A + ¼B
+    //  places the junction far too close to A — often inside A's
+    //  NODE_W=80 bounding box.  The renderer then clips the arc to
+    //  near-zero length, leaving only the straight A→B product leg
+    //  visible (the "collapsed line" symptom).
+    // ------------------------------------------------------------------
+    IsLooped := False;
+    LoopedPt := TPointF.Zero;
+    for P in R.Reactants do
+      for Q in R.Products do
+        if P.Species = Q.Species then
+        begin
+          IsLooped := True;
+          LoopedPt := P.Species.Center;
+        end;
+
     // --- Reposition junction to the midpoint between reactant and product
     //     centroids.  The force layout places junctions by mass-spring forces
     //     which don't guarantee they end up on the reactant→product axis.
@@ -589,8 +649,50 @@ const
     else
       CentP := CentR;
 
-    R.JunctionPos := TPointF.Create((CentR.X + CentP.X) * 0.5,
-                                     (CentR.Y + CentP.Y) * 0.5);
+    if IsLooped then
+    begin
+      // For looped reactions (A appears on both sides), the standard
+      // (CentR + CentP) / 2 formula double-counts A, biasing the junction
+      // toward it.  Instead, take the centroid of all UNIQUE participating
+      // species.  For A → A + B this gives (A + B) / 2, placing the
+      // junction cleanly midway regardless of how many times A appears.
+      var USumX  : Single  := 0;
+      var USumY  : Single  := 0;
+      var UCount : Integer := 0;
+      var SeenSpec := TDictionary<TSpeciesNode, Boolean>.Create;
+      try
+        for P in R.Reactants do
+          if not SeenSpec.ContainsKey(P.Species) then
+          begin
+            SeenSpec.AddOrSetValue(P.Species, True);
+            USumX := USumX + P.Species.Center.X;
+            USumY := USumY + P.Species.Center.Y;
+            Inc(UCount);
+          end;
+        for P in R.Products do
+          if not SeenSpec.ContainsKey(P.Species) then
+          begin
+            SeenSpec.AddOrSetValue(P.Species, True);
+            USumX := USumX + P.Species.Center.X;
+            USumY := USumY + P.Species.Center.Y;
+            Inc(UCount);
+          end;
+      finally
+        SeenSpec.Free;
+      end;
+      // UCount >= 2 for any useful looped reaction (A→A+B has {A,B}).
+      // UCount = 1 means a pure self-reaction (A→A); the formula still
+      // gives A, which is the same as the standard fallback, so no harm.
+      if UCount > 0 then
+        R.JunctionPos := TPointF.Create(USumX / UCount, USumY / UCount)
+      else
+        R.JunctionPos := TPointF.Create((CentR.X + CentP.X) * 0.5,
+                                         (CentR.Y + CentP.Y) * 0.5);
+    end
+    else
+      R.JunctionPos := TPointF.Create((CentR.X + CentP.X) * 0.5,
+                                       (CentR.Y + CentP.Y) * 0.5);
+
     // ------------------------------------------------------------------
     //  Step 1.  Substrate guide (CentreCtrl)
     //  Centroid of (all reactant centres + junction).
@@ -598,8 +700,6 @@ const
     // ------------------------------------------------------------------
     CentreCtrl := TPointF.Zero;
     nReactants := 0;
-    IsLooped   := False;
-    LoopedPt   := TPointF.Zero;
 
     for P in R.Reactants do
     begin
@@ -611,27 +711,40 @@ const
     CentreCtrl.Y := (CentreCtrl.Y + R.JunctionPos.Y) / (nReactants + 1);
 
     // ------------------------------------------------------------------
-    //  Step 2.  Self-loop detection.
-    //  When the same species appears as both reactant and product the two
-    //  legs would coincide if laid straight.  Rotate CentreCtrl 90° around
-    //  the junction to break the degeneracy.
-    //  (The X/Y index swap in the intermediate assignment is the compact
-    //  90° rotation used in the original C# source.)
+    //  Step 2.  Self-loop correction.
+    //  When the same species appears on both sides (e.g. A → A+B) the
+    //  two arcs coincide if CentreCtrl is left on the A→J axis.
+    //  Place CentreCtrl at LOOP_INNER_DIST px perpendicular to the
+    //  LoopedPt→Junction axis using the CCW perpendicular of the
+    //  unit vector directly, rather than the WalkAlongLine approach.
+    //
+    //  WHY NOT WalkAlongLine: it uses ArcTan(O/A) which loses quadrant
+    //  information whenever A < 0 (leftward component).  For any diagonal
+    //  A→J direction the computed rotation lands along A-B rather than
+    //  perpendicular to it, producing the "inner handles align from A to B"
+    //  artefact the user reported.  The CCW-perpendicular formula has no
+    //  such ambiguity.
+    //
+    //  Step 4 will pull the result 25 px toward J; with LOOP_INNER_DIST
+    //  set to 50 the final CentreCtrl ends up 25 px from the junction —
+    //  matching the original algorithm for horizontal/vertical reactions.
     // ------------------------------------------------------------------
-    for P in R.Reactants do
-      for Q in R.Products do
-        if P.Species = Q.Species then
-        begin
-          IsLooped := True;
-          LoopedPt := P.Species.Center;
-        end;
-
     if IsLooped then
     begin
-      CentreCtrl.Y := R.JunctionPos.Y + (R.JunctionPos.Y - LoopedPt.X);
-      CentreCtrl.X := R.JunctionPos.X + (R.JunctionPos.X - LoopedPt.Y);
-      CentreCtrl   := WalkAlongLine(LoopedPt, R.JunctionPos, 0, -25, False);
-      CentreCtrl   := WalkAlongLine(R.JunctionPos, CentreCtrl, -90, 0, False);
+      var LDX := R.JunctionPos.X - LoopedPt.X;
+      var LDY := R.JunctionPos.Y - LoopedPt.Y;
+      var LLen := Sqrt(LDX * LDX + LDY * LDY);
+      if LLen > 1.0 then
+      begin
+        LDX := LDX / LLen;
+        LDY := LDY / LLen;
+        const LOOP_INNER_DIST = 50.0;  // Step 4 reduces this to 25 px
+        // CCW perpendicular of the LoopedPt→Junction unit vector
+        CentreCtrl.X := R.JunctionPos.X + (-LDY) * LOOP_INNER_DIST;
+        CentreCtrl.Y := R.JunctionPos.Y + ( LDX) * LOOP_INNER_DIST;
+      end
+      else
+        CentreCtrl := R.JunctionPos;
     end;
 
     // ------------------------------------------------------------------
@@ -639,8 +752,12 @@ const
     //  Align CentreCtrl along the reactant→product axis so the resulting
     //  curve forms a clean arc between the two species rather than a
     //  diagonal tangle.
+    //  Skipped for looped reactions: the 90° rotation from Step 2 has
+    //  already set a better CentreCtrl, and the on-axis direction this
+    //  step would write would collapse the arc separation.
     // ------------------------------------------------------------------
-    if (R.Reactants.Count = 1) and (R.Products.Count = 1) then
+    if (not IsLooped) and
+       (R.Reactants.Count = 1) and (R.Products.Count = 1) then
     begin
       UniUniDist  := -GeoDistance(R.JunctionPos, CentreCtrl);
       ReactCenter := R.Reactants[0].Species.Center;
@@ -739,6 +856,41 @@ const
         end;
       end;
     end;
+
+    // ------------------------------------------------------------------
+    //  Step 8.  Cross-role looped fan-out.
+    //  When species A appears as BOTH reactant and product (e.g. A → A+B),
+    //  Steps 5 & 6 assign the same outer handle to both legs:
+    //    reactant A  Ctrl1 = A + 35% · (J–A)   ← on the A-J axis
+    //    product  A  Ctrl2 = A + 35% · (J–A)   ← identical!
+    //  Both arcs therefore exit A's bounding box at exactly the same pixel,
+    //  so they appear as a single collapsed line.
+    //
+    //  Fix: offset the outer handles by ±30 px along the CCW perpendicular
+    //  of the A→J unit vector.  Verified for all four axis orientations:
+    //  the CCW perpendicular is always on the same side as CentreCtrl (the
+    //  substrate guide from the loop correction), so the reactant fans toward
+    //  CentreCtrl and the product fans to the opposite side, giving ~30 px
+    //  of separation at A's bounding-box boundary.
+    //
+    //  IMPORTANT: MaterialiseSmoothCtrlPts (uDiagramView) resets outer
+    //  handles for smooth-junction reactions and must apply the same fan.
+    // ------------------------------------------------------------------
+    if IsLooped then
+      for P in R.Reactants do
+        for Q in R.Products do
+          if P.Species = Q.Species then
+          begin
+            var DX := R.JunctionPos.X - P.Species.Center.X;
+            var DY := R.JunctionPos.Y - P.Species.Center.Y;
+            var Len := Sqrt(DX * DX + DY * DY);
+            if Len < 1.0 then Continue;
+            // CCW perpendicular of A→J, scaled to 30 px
+            var PerpX := (-DY / Len) * 30.0;
+            var PerpY := ( DX / Len) * 30.0;
+            P.Ctrl1 := TPointF.Create(P.Ctrl1.X + PerpX, P.Ctrl1.Y + PerpY);
+            Q.Ctrl2 := TPointF.Create(Q.Ctrl2.X - PerpX, Q.Ctrl2.Y - PerpY);
+          end;
   end; // ComputeForReaction
 
 var

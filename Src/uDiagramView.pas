@@ -37,8 +37,7 @@ uses
   uUndoManager,
   uAntimonyLexer,
   uAntimonyExpressionParser,
-  uExpressionNode,
-  uPreferencesObject;
+  uExpressionNode;
 
 // ---------------------------------------------------------------------------
 const
@@ -48,7 +47,14 @@ const
   VIEW_MODIFIER_OFFSET   = 10.0;  // world px: dot sits this far from junction centre
 
   VIEW_PRODUCT_GAP         = 6.0;  // world px gap, straight/linear product legs
-  VIEW_BEZIER_PRODUCT_GAP  = 6.0;  // world px gap, Bézier product legs
+  VIEW_PRODUCT_ARROW_INSET = 3.0;  // world px: straight arrowhead tip set back from boundary
+                                    // independent of VIEW_PRODUCT_GAP — reduce toward 0 to
+                                    // move the arrowhead closer without moving the line endpoint
+  VIEW_BEZIER_PRODUCT_GAP  = 6.0;  // world px gap, Bézier product legs (line endpoint)
+  VIEW_BEZIER_ARROW_INSET  = 3.0;  // world px: Bézier arrowhead tip set back from boundary
+                                    // independent of VIEW_BEZIER_PRODUCT_GAP — reduce toward
+                                    // 0 to move the arrowhead closer to the species border
+                                    // without moving the line endpoint
   VIEW_REACTANT_GAP        = 6.0;  // world px gap, straight/linear reactant legs
   VIEW_BEZIER_REACTANT_GAP = 6.0;  // world px gap, Bézier reactant legs
   VIEW_ARROW_LEN       = 12.0;
@@ -2147,6 +2153,16 @@ var
   LegUX, LegUY  : Single;
   C1, C2         : TPointF;
   i              : Integer;
+  // Cross-role looped fan-out (Step 8 equivalent for smooth reactions)
+  PR, PP         : TParticipant;
+  ri, pi         : Integer;
+  FanDX, FanDY   : Single;
+  FanLen         : Single;
+  FanPerpX       : Single;
+  FanPerpY       : Single;
+  HasLoopedPair  : Boolean;
+  LoopPerpX      : Single;
+  LoopPerpY      : Single;
 begin
   ComputeSmoothAxis(R, AxisX, AxisY);
   JPos := R.JunctionPos;
@@ -2179,6 +2195,81 @@ begin
     C2.X := P.Species.Center.X - LegUX * LegLen * CTRL_FRAC;  // outer
     C2.Y := P.Species.Center.Y - LegUY * LegLen * CTRL_FRAC;
     P.Ctrl1 := C1; P.Ctrl2 := C2; P.CtrlPtsSet := True;
+  end;
+
+  // ------------------------------------------------------------------
+  //  Cross-role looped fan-out + perpendicular inner handles.
+  //  When the same species A appears on both sides (e.g. A → A+B):
+  //
+  //  Phase 1 — looped pairs:
+  //    Fan outer handles ±30 px along CCW perp of A→J.
+  //    Override inner handles for the looped species perpendicular (25 px).
+  //
+  //  Phase 2 — all other participants:
+  //    The smooth-axis formula placed non-looped product B's inner handle
+  //    along the J→B axis, making ALL four control points collinear →
+  //    cubic Bezier degenerates to a straight line.  After Phase 1 we know
+  //    the perpendicular direction; override every remaining inner handle
+  //    perpendicular at 25 px too.  This matches what non-smooth Deckard
+  //    produces via the reflected CentreCtrl for every product leg.
+  // ------------------------------------------------------------------
+  HasLoopedPair := False;
+  LoopPerpX := 0.0;
+  LoopPerpY := 0.0;
+
+  // Phase 1: detect looped pairs, fan outer handles, fix looped inner handles.
+  for ri := 0 to R.Reactants.Count - 1 do
+  begin
+    PR := R.Reactants[ri];
+    if not PR.CtrlPtsSet then Continue;
+    for pi := 0 to R.Products.Count - 1 do
+    begin
+      PP := R.Products[pi];
+      if not PP.CtrlPtsSet then Continue;
+      if PR.Species <> PP.Species then Continue;
+      FanDX  := JPos.X - PR.Species.Center.X;
+      FanDY  := JPos.Y - PR.Species.Center.Y;
+      FanLen := Sqrt(FanDX * FanDX + FanDY * FanDY);
+      if FanLen < 1.0 then Continue;
+      FanPerpX := -FanDY / FanLen;   // CCW unit perp of A→J
+      FanPerpY :=  FanDX / FanLen;
+      HasLoopedPair := True;
+      LoopPerpX := FanPerpX;
+      LoopPerpY := FanPerpY;
+      // Fan outer handles ±30 px
+      PR.Ctrl1 := TPointF.Create(PR.Ctrl1.X + FanPerpX * 30.0,
+                                  PR.Ctrl1.Y + FanPerpY * 30.0);
+      PP.Ctrl2 := TPointF.Create(PP.Ctrl2.X - FanPerpX * 30.0,
+                                  PP.Ctrl2.Y - FanPerpY * 30.0);
+      // Inner handles for the looped species: perpendicular at 25 px
+      PR.Ctrl2 := TPointF.Create(JPos.X + FanPerpX * 25.0,
+                                  JPos.Y + FanPerpY * 25.0);
+      PP.Ctrl1 := TPointF.Create(JPos.X - FanPerpX * 25.0,
+                                  JPos.Y - FanPerpY * 25.0);
+    end;
+  end;
+
+  // Phase 2: override remaining inner handles to be perpendicular.
+  // All reactant inner handles go to J + LoopPerp*25 (same side).
+  // All product  inner handles go to J − LoopPerp*25 (opposite side).
+  // This eliminates the straight-line degeneracy for product B and any
+  // other non-looped participant whose inner ctrl was left on the axis.
+  if HasLoopedPair then
+  begin
+    for ri := 0 to R.Reactants.Count - 1 do
+    begin
+      PR := R.Reactants[ri];
+      if PR.CtrlPtsSet then
+        PR.Ctrl2 := TPointF.Create(JPos.X + LoopPerpX * 25.0,
+                                    JPos.Y + LoopPerpY * 25.0);
+    end;
+    for pi := 0 to R.Products.Count - 1 do
+    begin
+      PP := R.Products[pi];
+      if PP.CtrlPtsSet then
+        PP.Ctrl1 := TPointF.Create(JPos.X - LoopPerpX * 25.0,
+                                    JPos.Y - LoopPerpY * 25.0);
+    end;
   end;
 end;
 
@@ -2556,12 +2647,6 @@ begin
     begin
       var Reactant := R.Reactants[0].Species;
       var Product  := R.Products[0].Species;
-      // If either endpoint is a null node and we are hiding null species,
-      // suppress the arc for that participant entirely.
-      if not PreferencesObject.ShowNullSpecies then
-      begin
-        if Reactant.IsNullNode or Product.IsNullNode then Continue;
-      end;
       DirW.X := Product.Center.X - Reactant.Center.X;
       DirW.Y := Product.Center.Y - Reactant.Center.Y;
       DirW   := NormalizeVec(DirW);
@@ -2575,7 +2660,10 @@ begin
                                 Product.HalfH, Reactant.Center, VIEW_PRODUCT_GAP);
       TipScr := W2S(TipW);
       ACanvas.DrawLine(W2S(StartW), TipScr, LinePaint);
-      ArrW         := FilledArrowhead(TipW, DirW, VIEW_ARROW_LEN, VIEW_ARROW_HALF_BASE);
+      var UniArrTip : TPointF;
+      UniArrTip.X  := TipW.X + DirW.X * (VIEW_PRODUCT_GAP - VIEW_PRODUCT_ARROW_INSET);
+      UniArrTip.Y  := TipW.Y + DirW.Y * (VIEW_PRODUCT_GAP - VIEW_PRODUCT_ARROW_INSET);
+      ArrW         := FilledArrowhead(UniArrTip, DirW, VIEW_ARROW_LEN, VIEW_ARROW_HALF_BASE);
       ArrScr.Tip   := W2S(ArrW.Tip);
       ArrScr.Base1 := W2S(ArrW.Base1);
       ArrScr.Base2 := W2S(ArrW.Base2);
@@ -2598,7 +2686,6 @@ begin
       for i := 0 to FanTotal - 1 do
       begin
         P := R.Reactants[i];
-        if P.Species.IsNullNode and not PreferencesObject.ShowNullSpecies then Continue;
         // Conceptual endpoints: centre --> junction
         GetCtrlPts(P, P.Species.Center, JPos, i, FanTotal, True, C1W, C2W);
         // Find t where the curve exits the species rectangle
@@ -2636,7 +2723,6 @@ begin
       for i := 0 to FanTotal - 1 do
       begin
         P := R.Products[i];
-        if P.Species.IsNullNode and not PreferencesObject.ShowNullSpecies then Continue;
         // Conceptual endpoints: junction --> centre
         GetCtrlPts(P, JPos, P.Species.Center, i, FanTotal, False, C1W, C2W);
         // Find t where the curve enters the species rectangle
@@ -2650,19 +2736,24 @@ begin
 
         // Arrowhead: tangent at the boundary crossing = (LD - LC) direction.
         // This naturally "rotates about the species centre" as ctrl pts move.
-        // Back the tip off by VIEW_BEZIER_PRODUCT_GAP along that tangent so
-        // the gap matches the straight/linear product-leg behaviour.
+        // The drawn curve ends at TipW (VIEW_BEZIER_PRODUCT_GAP back from LD).
+        // The arrowhead tip is placed independently at VIEW_BEZIER_ARROW_INSET
+        // back from LD, which can be set smaller than the line gap so the tip
+        // sits flush with the boundary without the line end protruding.
         DirW.X := LD.X - LC.X;
         DirW.Y := LD.Y - LC.Y;
         DirW   := NormalizeVec(DirW);
         TipW.X := LD.X - DirW.X * VIEW_BEZIER_PRODUCT_GAP;
         TipW.Y := LD.Y - DirW.Y * VIEW_BEZIER_PRODUCT_GAP;
+        var ArrTipW : TPointF;
+        ArrTipW.X := LD.X - DirW.X * VIEW_BEZIER_ARROW_INSET;
+        ArrTipW.Y := LD.Y - DirW.Y * VIEW_BEZIER_ARROW_INSET;
         Builder := TSkPathBuilder.Create;
         Builder.MoveTo(JScr);
         Builder.CubicTo(W2S(LB), W2S(LC), W2S(TipW));
         Path := Builder.Detach;
         ACanvas.DrawPath(Path, LinePaint);
-        ArrW         := FilledArrowhead(TipW, DirW, VIEW_ARROW_LEN, VIEW_ARROW_HALF_BASE);
+        ArrW         := FilledArrowhead(ArrTipW, DirW, VIEW_ARROW_LEN, VIEW_ARROW_HALF_BASE);
         ArrScr.Tip   := W2S(ArrW.Tip);
         ArrScr.Base1 := W2S(ArrW.Base1);
         ArrScr.Base2 := W2S(ArrW.Base2);
@@ -2674,7 +2765,6 @@ begin
     // --- Straight reaction ------------------------------------------------
     for P in R.Reactants do
     begin
-      if P.Species.IsNullNode and not PreferencesObject.ShowNullSpecies then Continue;
       BoundW := RectBoundaryIntersect(P.Species.Center, P.Species.HalfW,
                                       P.Species.HalfH, JPos);
       // Direction from boundary toward junction; back start off the border.
@@ -2694,7 +2784,6 @@ begin
 
     for P in R.Products do
     begin
-      if P.Species.IsNullNode and not PreferencesObject.ShowNullSpecies then Continue;
       TipW   := ProductLineTip(P.Species.Center, P.Species.HalfW,
                                 P.Species.HalfH, JPos, VIEW_PRODUCT_GAP);
       TipScr := W2S(TipW);
@@ -2702,7 +2791,10 @@ begin
       DirW.X := P.Species.Center.X - JPos.X;
       DirW.Y := P.Species.Center.Y - JPos.Y;
       DirW   := NormalizeVec(DirW);
-      ArrW         := FilledArrowhead(TipW, DirW, VIEW_ARROW_LEN, VIEW_ARROW_HALF_BASE);
+      var StraightArrTip : TPointF;
+      StraightArrTip.X := TipW.X + DirW.X * (VIEW_PRODUCT_GAP - VIEW_PRODUCT_ARROW_INSET);
+      StraightArrTip.Y := TipW.Y + DirW.Y * (VIEW_PRODUCT_GAP - VIEW_PRODUCT_ARROW_INSET);
+      ArrW         := FilledArrowhead(StraightArrTip, DirW, VIEW_ARROW_LEN, VIEW_ARROW_HALF_BASE);
       ArrScr.Tip   := W2S(ArrW.Tip);
       ArrScr.Base1 := W2S(ArrW.Base1);
       ArrScr.Base2 := W2S(ArrW.Base2);
@@ -2816,8 +2908,6 @@ begin
 
     if S.IsNullNode then
     begin
-      if not PreferencesObject.ShowNullSpecies then Continue;
-
       var CScr   := W2S(S.Center);
       var Radius := W2SLen(S.HalfW);          // circle inscribed in Width
 
@@ -2938,7 +3028,6 @@ begin
     // Null nodes get a circular halo; regular nodes get a rounded-rect halo.
     if S.IsNullNode then
     begin
-      if not PreferencesObject.ShowNullSpecies then Continue;
       var CScr      := W2S(S.Center);
       var HaloR     := W2SLen(S.HalfW + VIEW_SEL_RING_OUTSET);
       ACanvas.DrawCircle(CScr, HaloR, RingPaint);

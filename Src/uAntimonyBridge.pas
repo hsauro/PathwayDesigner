@@ -288,7 +288,7 @@ begin
         JX := (SumRX + SumPX) * 0.5;
         JY := (SumRY + SumPY) * 0.5;
 
-Reaction := AModel.AddReaction(JX, JY);
+        Reaction := AModel.AddReaction(JX, JY);
         Reaction.KineticLaw   := AntRct.KineticLaw;
         Reaction.IsReversible := AntRct.IsReversible;
         if AntRct.Id <> '' then Reaction.Id := AntRct.Id;
@@ -615,5 +615,5 @@ begin
 end;
 
 initialization
-  TAntimonyBridge.ConvertCatalyticSpecies := True;
+  TAntimonyBridge.ConvertCatalyticSpecies := False;
 end.
